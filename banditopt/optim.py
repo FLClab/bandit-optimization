@@ -48,8 +48,9 @@ def run_TS(config, save_folder="debug_trial", regressor_name="sklearn_BayesRidge
     # Create directory and save some data
     if not os.path.isfile(save_folder):
         os.mkdir(save_folder)
-    # copyfile("bandit/optim.py", os.path.join(save_folder,"optim.py"))
-    # copyfile("bandit/algorithms.py", os.path.join(save_folder,"algorithms.py"))
+    root = os.path.dirname(os.path.abspath(__file__))
+    copyfile(f"{root}/optim.py", os.path.join(save_folder,"optim.py"))
+    copyfile(f"{root}/algorithms.py", os.path.join(save_folder,"algorithms.py"))
     with open(os.path.join(save_folder, "config.yml"), 'w') as f:
         yaml.dump(config, f)
     im_dir_names = ("conf1", "sted", "conf2", "fluomap", "y_samples")
