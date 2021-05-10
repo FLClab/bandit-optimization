@@ -15,7 +15,7 @@ try:
     import microscope
 except:
     print("Could not load microscope interface. Some functions may not be available.")
-import src.utils as utils
+from . import utils
 
 
 class LinePicker:
@@ -95,7 +95,7 @@ class LinePicker:
                         # keep only the first 40 pixels
                         self.profile = profile[:40]
                         self.axprofile.plot(self.positions, self.profile)
-                        
+
                         # Plot line picked
                         self.aximg.scatter(cc,rr, s=1,)
                         # Plot start stop
@@ -218,7 +218,7 @@ def select(thetas, objectives, with_time, times, figsize=(10, 10), borders=None)
     :return: The index of the selected point.
     """
     print("Asking user to select best option...")
-    
+
     if borders is not None:
         for idx, y in enumerate(thetas):
             min, max = borders[idx]
@@ -250,8 +250,8 @@ def select(thetas, objectives, with_time, times, figsize=(10, 10), borders=None)
     elif len(objectives) > 2:
         sc = ax.scatter(thetas[0], thetas[1], s=100, c=times, marker="o", alpha=0.5, picker=3, cmap=cmap)
         pyplot.colorbar(sc, ax=ax)
-        
-        
+
+
     else:
         ax.scatter(thetas[0], thetas[1], s=200, marker="o", alpha=0.5, picker=3)
     ax.grid(True)
@@ -273,7 +273,7 @@ def select(thetas, objectives, with_time, times, figsize=(10, 10), borders=None)
             sc.remove()
             sc = ax2.scatter(thetas[0], thetas[1], s=100, c=thetas[2], marker="o", alpha=0.5, picker=3, cmap=cmap)
             print("--------------------------------------awrefsdrgsdrfgsdf dsf---------1")
-            
+
         else:
             sc.remove()
             sc = ax2.scatter(thetas[0], thetas[1], s=200, marker="o", alpha=0.5, picker=3)
@@ -326,7 +326,7 @@ def select(thetas, objectives, with_time, times, figsize=(10, 10), borders=None)
     pyplot.close()
     assert index is not None, "User did not pick any point!"
     return index
-    
+
 ## Initial version, with no varying point size and color
 #def select(thetas, objectives, with_time, times, figsize=(10, 10)):
 #    """Asks the user to select the best option by clicking on the points from the

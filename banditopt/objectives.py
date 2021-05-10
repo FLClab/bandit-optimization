@@ -13,10 +13,12 @@ from statsmodels.tsa.stattools import acf
 from skimage.transform import resize
 
 #import fsc
-import src.utils as utils
-import src.user as user
+# import src.utils as utils
+# import src.user as user
 
 from . import decorr_res
+from . import utils
+from . import user
 
 
 class Objective(ABC):
@@ -242,8 +244,8 @@ class FRC(Objective):
 
     def mirror_ticks(self, ticks):
         return ["{:0.0f}".format(1e+3 / (self.max_spatialfreq * x)) if x > 0 else "" for x in ticks]
-        
-    
+
+
 class Resolution(Objective):
     def __init__(self, pixelsize, inf_val=250):
         self.label = "Resolution (nm)"
@@ -257,4 +259,3 @@ class Resolution(Objective):
         if res == numpy.inf:
             res = self.inf_val
         return res
-

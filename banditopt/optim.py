@@ -1,10 +1,5 @@
 from shutil import copyfile
-import src.algorithms as algorithms
-import src.objectives as objectives
-from src.algorithms import TS_sampler
-import src.user as user
-import src.utils as utils
-import src.simulate_image as simulation
+
 import skimage.io as skio
 
 import os
@@ -12,6 +7,10 @@ import time
 import yaml
 import numpy as np
 import platform
+
+from . import algorithms, objectives, user, utils
+from .algorithms import TS_sampler
+from . import simulate_image as simulation
 
 # Define the objectives and regressors here
 obj_dict = {"SNR":objectives.Signal_Ratio(75),"Bleach":objectives.Bleach(), "Resolution":objectives.Resolution(pixelsize=None), }
@@ -40,7 +39,7 @@ def run_TS(config, save_folder="debug_trial", regressor_name="sklearn_BayesRidge
               for tradeoff selection
     """
 
-    
+
 
     ndims = len(param_names)
     n_points = [n_divs_default]*ndims
@@ -49,14 +48,14 @@ def run_TS(config, save_folder="debug_trial", regressor_name="sklearn_BayesRidge
     # Create directory and save some data
     if not os.path.isfile(save_folder):
         os.mkdir(save_folder)
-    copyfile("src/optim.py", os.path.join(save_folder,"optim.py"))
-    copyfile("src/algorithms.py", os.path.join(save_folder,"algorithms.py"))
+    # copyfile("bandit/optim.py", os.path.join(save_folder,"optim.py"))
+    # copyfile("bandit/algorithms.py", os.path.join(save_folder,"algorithms.py"))
     with open(os.path.join(save_folder, "config.yml"), 'w') as f:
         yaml.dump(config, f)
     im_dir_names = ("conf1", "sted", "conf2", "fluomap", "y_samples")
     for dir_name in im_dir_names:
         os.mkdir(os.path.join(save_folder, dir_name))
-        
+
 
     for no_trial in range(nbre_trials):
         print(f"Trial {no_trial}...")
@@ -71,7 +70,7 @@ def run_TS(config, save_folder="debug_trial", regressor_name="sklearn_BayesRidge
             algos.append(TS_sampler(regressors_dict[regressor_name](**args)))
         # Define the parameter values to predict
         grids = np.meshgrid(*[np.linspace(x_mins[i], x_maxs[i], n_points[i]) for i in range(ndims)])
-        X = np.hstack([grid.ravel()[:,np.newaxis] for grid in grids]) 
+        X = np.hstack([grid.ravel()[:,np.newaxis] for grid in grids])
 
         s_lb, s_ub, dts, dts_sampling, dts_update = [], [], [], [], []
         for iter_idx in range(optim_length):
@@ -90,16 +89,16 @@ def run_TS(config, save_folder="debug_trial", regressor_name="sklearn_BayesRidge
             else:
                 col = param_names.index("dwelltime")
                 timesperpixel = X[:,col] #* default_values_dict["pixelsize"] #* (default_values_dict[im_size_nm]*1e-9)**2/default_values_dict[pixelsize]**2w
-                
-            
+
+
 
             # Select a point
             if iter_idx==0:
                 x_selected = X[np.random.randint(X.shape[0])][:, np.newaxis]
             else:
                 x_selected = X[user.select(y_samples, [obj_dict[name] for name in obj_names], with_time, timesperpixel, borders=borders), :][:,np.newaxis]
-            
-            
+
+
             # Acquire conf1, sted_image, conf2
             for i in range(len(x_selected)):
                 default_values_dict[param_names[i]] = x_selected[i]
@@ -132,19 +131,19 @@ def run_TS(config, save_folder="debug_trial", regressor_name="sklearn_BayesRidge
             skio.imsave(os.path.join(save_folder, "conf2",str(no_trial), str(iter_idx)+".tiff"), conf2)
             for i, key in enumerate(params_conf):
                 default_values_dict[key] = defaults_list[i]
-            
+
             # foreground on confocal image
             fg_c = utils.get_foreground(conf1)
             # foreground on sted image
             fg_s = utils.get_foreground(sted_image)
             # remove STED foreground points not in confocal foreground, if any
             fg_s *= fg_c
-            
+
             # Evaluate the objective results
             obj_dict["Resolution"] = objectives.Resolution(pixelsize=default_values_dict["pixelsize"]) #Just in case the pixelsize have changed
             y_result = np.array([obj_dict[name].evaluate([sted_image], conf1, conf2, fg_s, fg_c) for name in obj_names])
             print(x_selected.T, y_result)
-            
+
 #            y_result = obj_func.sample(x_selected.T)
             t0 = time.time()
             [algos[i].update(x_selected.T, y_result[i].flatten()) for i in range(len(obj_names))]
@@ -163,7 +162,3 @@ def run_TS(config, save_folder="debug_trial", regressor_name="sklearn_BayesRidge
     #        np.savetxt(os.path.join(save_folder,f's_ub_{no_trial}.csv'), np.array(s_ub), delimiter=",")
             np.savetxt(os.path.join(save_folder,f'dts_sampling_{no_trial}.csv'), np.array(dts_sampling), delimiter=",")
             np.savetxt(os.path.join(save_folder,f'dts_update_{no_trial}.csv'), np.array(dts_update), delimiter=",")
-            
-            
-        
-

@@ -1,4 +1,4 @@
-import src.optim as optim
+from banditopt import optim
 
 config =  dict(
     save_folder="debug_trialX",
@@ -46,7 +46,6 @@ config =  dict(
 #    borders = [(0,300), (0,1), (0,50)],
     borders = None
               )
-    
+
 
 optim.run_TS(config=config, **config)
-
