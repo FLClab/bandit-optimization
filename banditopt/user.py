@@ -313,7 +313,8 @@ def select(thetas, objectives, with_time, times, figsize=(10, 10), borders=None)
             print("Selected points:", event.ind)
             # objectives are minimized (see objectives.py)
             min_z = numpy.min(thetas[2][event.ind])
-            candidates = event.ind[thetas[2][event.ind] == min_z]
+            # candidates = event.ind[thetas[2][event.ind] == min_z]
+            candidates = event.ind
         else:
             candidates = event.ind
         print("Picking at random in", candidates)
