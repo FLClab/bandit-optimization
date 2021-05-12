@@ -1,4 +1,4 @@
-import src.optim as optim
+from banditopt import optim
 
 x_mins=[(4e-3)*2**-2, (1e-5)*2**-2]
 x_maxs=[(4e-3)*2**2, (1e-5)*2**2]
@@ -50,7 +50,10 @@ config =  dict(
 #    borders = [(0,300), (0,1), (0,50)],
     borders = None
               )
+<<<<<<< HEAD:run_optim_microscope.py
+
+=======
+>>>>>>> 5517fdac48f0bcaded0684cc8d09b16ccc9a02b8:run_optim_example.py
 
 
 optim.run_TS(config=config, **config)
-
