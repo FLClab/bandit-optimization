@@ -10,13 +10,12 @@ import time
 def simulate_image(molecules_disposition = None, im_size_nm  = 1000, nb_molecules_per_point_src = 100, nb_pt_src = 4,
                    pixelsize = 10e-9, p_ex = 1e-6, p_sted = 30e-3, dwelltime = 10e-6,
                    bleach = True, noise = True, background=0, darkcount=0, seed=None):
-    
-#    dwelltime  = dwelltime/100
+    #    dwelltime  = dwelltime/100
     if molecules_disposition is None:
         im_size_pixels = np.rint(im_size_nm*1e-9/pixelsize).astype(int)
         im_shape = (im_size_pixels, im_size_pixels)
-        
-        
+
+
         molecules_disposition = np.zeros(im_shape)
         molecules_disposition[np.random.randint(im_size_pixels, size=nb_pt_src), np.random.randint(im_size_pixels, size=nb_pt_src)] = nb_molecules_per_point_src
 
@@ -52,15 +51,15 @@ def simulate_image(molecules_disposition = None, im_size_nm  = 1000, nb_molecule
     roi = 'max'
 
     # Generating objects necessary for acquisition simulation
-    laser_ex = base.GaussianBeam(640e-9)
-    laser_sted = base.DonutBeam(775e-9, zero_residual=0)
+    laser_ex = base.GaussianBeam(488e-9)
+    laser_sted = base.DonutBeam(575e-9, zero_residual=0)
     detector = base.Detector(noise=noise, background=background)
     objective = base.Objective()
     fluo = base.Fluorescence(**egfp)
     datamap = base.Datamap(molecules_disposition, pixelsize)
     microscope = base.Microscope(laser_ex, laser_sted, detector, objective, fluo)
     t0 = time.time()
-    i_ex, _, _ = microscope.cache(datamap.pixelsize)
+    i_ex, _, _ = microscope.cache(datamap.pixelsize, save_cache=True)
     dt_cache = time.time()-t0
     datamap.set_roi(i_ex, roi)
 
@@ -68,7 +67,7 @@ def simulate_image(molecules_disposition = None, im_size_nm  = 1000, nb_molecule
     acquisition, bleached, intensity = microscope.get_signal_and_bleach(datamap, datamap.pixelsize, float(dwelltime), float(p_ex), float(p_sted),
                                                                     bleach=bleach, update=False, seed=seed)
     dt_get_signal = time.time()-t0
-    
+
     data = {"Datamap roi":datamap.whole_datamap[datamap.roi], "Bleached datamap":bleached["base"][datamap.roi],
             "Acquired signal (photons)":acquisition, "dt cache":dt_cache, "dt get_signal":dt_get_signal,
             "pixelsize":pixelsize}

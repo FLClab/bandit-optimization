@@ -24,11 +24,6 @@ def rescale_X(X, param_space_bounds):
         xmean = (xmax+xmin)/2
         X[:,col] = (X[:,col] - xmean)/(xmax - xmin)
     return X
-    
-    
-
-
-
 
 class sklearn_GP(GaussianProcessRegressor):
     """This class is meant to be used as a the regressor argument of the TS_sampler
@@ -45,10 +40,10 @@ class sklearn_GP(GaussianProcessRegressor):
         super().__init__(RBF(length_scale=length_scale), alpha=noise_level/norm_bound**2, optimizer=None, normalize_y=normalize_y)
         self.noise_var = noise_level
         self.norm_bound = norm_bound
-        
+
     def update(self, X, y):
         self.fit(X,y)
-    
+
     def get_mean_std(self, X):
         mean, sqrt_k = self.predict(X, return_std=True)
 #        std = np.sqrt(std**2 - self.noise_var)
@@ -56,7 +51,7 @@ class sklearn_GP(GaussianProcessRegressor):
 #        std = self.s_ub / numpy.sqrt(self.lambda_) * sqrt_k
         std = self.norm_bound * sqrt_k
         return mean, std
-    
+
     def sample(self, X):
         mean, k = self.predict(X, return_cov=True)
         cov = self.norm_bound**2  * k
@@ -76,7 +71,7 @@ class sklearn_BayesRidge(BayesianRidge):
     def __init__(self, degree, param_space_bounds=None,
                  tol=1e-6, fit_intercept=True,
                  compute_score=True,alpha_init=None,
-                 lambda_init=None, 
+                 lambda_init=None,
                  alpha_1=1e-06, alpha_2=1e-06, lambda_1=1e-06, lambda_2=1e-06):
         super().__init__(tol=tol, fit_intercept=fit_intercept,
                          compute_score=compute_score, alpha_init=alpha_init,
@@ -85,11 +80,11 @@ class sklearn_BayesRidge(BayesianRidge):
         self.degree=degree
         self.param_space_bounds=param_space_bounds
 
-        
+
     def update(self, X, y):
         """Update the regression model using the observations *y* acquired at
         locations *X*.
-        
+
         :param action: A 2d array of locations.
         :param reward: A 1-D array of observations.
         """
@@ -97,7 +92,7 @@ class sklearn_BayesRidge(BayesianRidge):
             rescale_X(X, self.param_space_bounds)
         X = PolynomialFeatures(self.degree).fit_transform(X)[:,1:]
         self.fit(X,y.flatten())
-    
+
     def get_mean_std(self, X):
         """Predict mean and standard deviation at given points *X*.
 
@@ -110,7 +105,7 @@ class sklearn_BayesRidge(BayesianRidge):
         mean, std = self.predict(X, return_std=True)
         std = np.sqrt(std**2 - (1/self.alpha_))
         return mean, std
-    
+
     def sample(self, X):
         """Sample a function evaluated at points *X*.
 
@@ -138,7 +133,7 @@ class TS_sampler():
         self.regressor = regressor
         self.X = None
         self.y = None
-        
+
     def predict(self, X_pred):
         """Predict mean and standard deviation at given points *X_pred*.
 
@@ -151,7 +146,7 @@ class TS_sampler():
             mean = np.full(X_pred.shape[0], 0)
             std = np.full(X_pred.shape[0], 1)
             return mean, std
-        
+
     def sample(self, X_sample):
         """Sample a function evaluated at points *X_sample*. When no points have
         been observed yet, the function values are sampled uniformly between 0 and 1.
@@ -173,7 +168,7 @@ class TS_sampler():
     def update(self, action, reward):
         """Update the regression model using the observations *reward* acquired at
         location *action*.
-        
+
         :param action: A 2d array of locations.
         :param reward: A 1-D array of observations.
         """
