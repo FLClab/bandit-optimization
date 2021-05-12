@@ -9,19 +9,19 @@ config =  dict(
             "alpha_2": 49.94414719461602,
             "alpha_init": 100.11183053174646,
             "compute_score": True,
-            "degree": 4,
+            "degree": 2,
             "fit_intercept": True,
-            "lambda_1": 5000.0,
-            "lambda_2": 3425.7338263935626,
+            "lambda_1": 1e-6,
+            "lambda_2": 1e-6,
             "lambda_init": 1.4595412992911199,
             "tol": 1.0e-06,
         },
-        "SNR":{"alpha_init":1./0.5**2, "lambda_init":1/(2*15/(0.004 - 0.0005)**2)**2, "alpha_2": 5000/(1./0.5**2), "lambda_2": 5000./(1/(2*15/(0.004 - 0.0005)**2)**2),},
-        "Bleach":{"alpha_init":1./0.06**2, "lambda_init":1/(2/(0.004 - 0.0005)**2)**2, "alpha_2": 5000/(1./0.03**2), "lambda_2": 5000./(1/(2/(0.004 - 0.0005)**2)**2),},
-        "Resolution":{"alpha_init":1./3.**2, "lambda_init":1/(2*100/(0.004 - 0.0005)**2)**2, "alpha_2": 5000./(1/3**2), "lambda_2": 5000./(1/(2*100/(0.004 - 0.0005)**2)**2),},
+        "SNR":{"alpha_init":1./0.5**2, "lambda_init":1/(2*15)**2, "alpha_2": 5000/(1./0.5**2), },
+        "Bleach":{"alpha_init":1./0.06**2, "lambda_init":1/(2)**2, "alpha_2": 5000/(1./0.03**2),},
+        "Resolution":{"alpha_init":1./3.**2, "lambda_init":1/(2*100)**2, "alpha_2": 5000./(1/3**2),},
     },
     n_divs_default = 25,
-    param_names = ["p_sted", "dwelltime"],
+    param_names = ["p_sted", "p_ex"],
     with_time=True,
     default_values_dict=dict(
         molecules_disposition = None,
@@ -37,9 +37,9 @@ config =  dict(
         background=5/10e-6,
         darkcount=0
     ),
-    params_conf = { 'p_ex':100e-6, 'p_sted':0, 'dwelltime':1e-5*100,},
-    x_mins=[4e-3*2**-3, 100*1e-5*2**-3],
-    x_maxs=[4e-3, 100*1e-5*2**3],
+    params_conf = { 'p_ex':20e-6, 'p_sted':0, },
+    x_mins=[0, 6.25e-6],
+    x_maxs=[0.0416, 0.0064],
     obj_names=["Resolution", "Bleach", "SNR", ],
     optim_length = 40,
     nbre_trials = 1,
@@ -49,4 +49,3 @@ config =  dict(
     
 
 optim.run_TS(config=config, **config)
-

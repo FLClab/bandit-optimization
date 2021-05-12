@@ -9,7 +9,7 @@ import time
 
 def simulate_image(molecules_disposition = None, im_size_nm  = 1000, nb_molecules_per_point_src = 100, nb_pt_src = 4,
                    pixelsize = 10e-9, p_ex = 1e-6, p_sted = 30e-3, dwelltime = 10e-6,
-                   bleach = True, noise = True, background=0, darkcount=0):
+                   bleach = True, noise = True, background=0, darkcount=0, seed=None):
     
 #    dwelltime  = dwelltime/100
     if molecules_disposition is None:
@@ -66,7 +66,7 @@ def simulate_image(molecules_disposition = None, im_size_nm  = 1000, nb_molecule
 
     t0 = time.time()
     acquisition, bleached, intensity = microscope.get_signal_and_bleach(datamap, datamap.pixelsize, float(dwelltime), float(p_ex), float(p_sted),
-                                                                    bleach=bleach, update=False)
+                                                                    bleach=bleach, update=False, seed=seed)
     dt_get_signal = time.time()-t0
     
     data = {"Datamap roi":datamap.whole_datamap[datamap.roi], "Bleached datamap":bleached["base"][datamap.roi],

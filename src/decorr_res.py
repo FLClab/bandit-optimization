@@ -2,6 +2,8 @@ import skimage.io as skio
 import numpy as np
 import pandas as pd
 
+from inspect import currentframe, getframeinfo
+
 
 def decorr_res(imname=None, image=None):
     #Input image and analysis parameter
@@ -14,7 +16,8 @@ def decorr_res(imname=None, image=None):
 
     # Edge apodization
     edge_apod = (np.sin(np.linspace(-np.pi/2, np.pi/2, w))+1)/2
-    Wx, Wy = np.meshgrid(*(np.concatenate([edge_apod, np.ones(l-2*w), np.flip(edge_apod)]) for l in image.shape))
+#    Wx, Wy = np.meshgrid(*(np.concatenate([edge_apod, np.ones(l-2*w), np.flip(edge_apod)]) for l in image.shape)) #BEFORE
+    Wx, Wy = np.meshgrid(*(np.concatenate([edge_apod, np.ones(l-2*w), np.flip(edge_apod)]) for l in np.flip(image.shape))) #AFTER
     W = Wx*Wy
     mean = image.mean()
     image = W*(image-mean) + mean
@@ -24,7 +27,8 @@ def decorr_res(imname=None, image=None):
     image = image.astype('float32')
     image = image[:image.shape[0]-1+image.shape[0]%2,:image.shape[1]-1+image.shape[1]%2] #Odd array sizes
 
-    X, Y = np.meshgrid(*(np.linspace(-1, 1, l) for l in image.shape)) #J'ai un ordre différent de dans le code matlab
+#    X, Y = np.meshgrid(*(np.linspace(-1, 1, l) for l in image.shape)) #J'ai un ordre différent de dans le code matlab #BEFORE
+    X, Y = np.meshgrid(*(np.linspace(-1, 1, l) for l in np.flip(image.shape))) #AFTER
     R = np.sqrt(X**2 + Y**2)
 
 
@@ -100,18 +104,20 @@ def decorr_res(imname=None, image=None):
     idx_0, A0 = decorr_peak(d, find_max_tol)
     r0 = r[idx_0]
 
-
+    
 
     sigmas = np.exp(np.arange(Ng+1)/Ng*(np.log(2/r0)-np.log(0.15)) + np.log(0.15)) #Not like in the code, Ng+1 values???
     gMax = 2/r0
 
     if gMax==np.inf: gMax = max(image.shape[0],image.shape[1])/2
     sigmas = np.array([image.shape[0]/4] + list(np.exp(np.linspace(np.log(gMax),np.log(0.15),Ng))))
-
+    
 
     idxs = np.array([])
-    As = np.array([])
-    rs = np.array([])
+#    As = np.array([A0]) #BEFORE
+#    rs = np.array([r0]) #BEFORE
+    As = np.array([A0]) #AFTER
+    rs = np.array([r0]) #AFTER
 
     for i, sig in enumerate(sigmas):
         d = decorr(Ik, Ikn, R, r, highpass_sigma=sig)
@@ -119,24 +125,30 @@ def decorr_res(imname=None, image=None):
         idxs = np.append(idxs, idx)
         As = np.append(As, A)
         rs = np.append(rs, r[idx])
-
-        
+    
+#    print("line =", getframeinfo(currentframe()).lineno, "rs=", rs)
     max_freq_peak = rs.max()
     max_freq_peak_idx = np.where(rs == max_freq_peak)[0][-1]
-    if r0>max_freq_peak:
+#    if r0>max_freq_peak: #BEFORE
+    if max_freq_peak_idx==0: #AFTER
         ind1 = 0
-    elif max_freq_peak_idx==(len(sigmas)-1):
-        ind1 = max_freq_peak_idx-1
+    elif max_freq_peak_idx>=(len(sigmas)-1): #AFTER: == changed to >=
+        ind1 = max_freq_peak_idx-2 #AFTER: -1 changed to -2
     else:
-        ind1 = max_freq_peak_idx
+        ind1 = max_freq_peak_idx-1
     ind2 = ind1+1
-
+    
+    
     r1 = rs[max_freq_peak_idx] - (r[1]-r[0])
     r2 = rs[max_freq_peak_idx] + 0.4
     r_finetune = np.linspace(r1, min(r2,r[-1]), Nr)
 
-
+#    import pdb; pdb.set_trace()
+#    print("line =", getframeinfo(currentframe()).lineno, "r_finetune=", r_finetune)
     sigmas_fine_tune = np.exp(np.linspace(np.log(sigmas[ind1]), np.log(sigmas[ind2]) ,Ng))
+    
+    As=As[:-1] #AFTER (weird...)
+    rs=rs[:-1] #AFTER (weird...)
     for i, sig in enumerate(sigmas_fine_tune):
         d = decorr(Ik, Ikn, R, r_finetune, highpass_sigma=sig)
         idx, A = decorr_peak(d, find_max_tol) #Note that in the matlab code, the first element in the array is SNR0, so the length of the array A0 is 12 instead of 11 here
@@ -144,12 +156,15 @@ def decorr_res(imname=None, image=None):
         As = np.append(As, A)
         rs = np.append(rs, r_finetune[idx])
 
-
+#    print("line =", getframeinfo(currentframe()).lineno, "rs=", rs)
+    rs = np.append(rs, r0) #AFTER (nothing before)
+    As = np.append(As, A0) #AFTER (nothing before)
+    
     rs[As<0.05] = 0 # IN the matlab code, Ks set to zero too
     
 
 
-
+    
     res = 2/np.max(rs)
     
     return res

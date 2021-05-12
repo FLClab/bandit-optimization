@@ -245,16 +245,16 @@ class FRC(Objective):
         
     
 class Resolution(Objective):
-    def __init__(self, pixelsize, inf_val=250):
+    def __init__(self, pixelsize, res_cap=250):
         self.label = "Resolution (nm)"
         self.select_optimal = numpy.argmin
         self.pixelsize = pixelsize
-        self.inf_val = 250
 #            self.kwargs = kwargs
+        self.res_cap=250
 
     def evaluate(self, sted_stack, confocal_init, confocal_end, sted_fg, confocal_fg):
         res = decorr_res.decorr_res(image=sted_stack[0])*self.pixelsize/1e-9
-        if res == numpy.inf:
-            res = self.inf_val
+        if res > self.res_cap:
+            res = self.res_cap
         return res
 

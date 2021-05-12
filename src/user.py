@@ -231,70 +231,104 @@ def select(thetas, objectives, with_time, times, figsize=(10, 10), borders=None)
     # set to your favorite colormap (see https://matplotlib.org/users/colormaps.html)
 #    cmap = pyplot.cm.get_cmap("nipy_spectral")
     cmap = pyplot.cm.get_cmap("cividis")
-
-    title = ax.set_title(f"Pick the best option by clicking on the point. Tmin={numpy.min(times)}, Tmax={numpy.max(times)}")
+    
+    if with_time:
+        title = ax.set_title(f"Pick the best option by clicking on the point. Tmin={numpy.min(times)}, Tmax={numpy.max(times)}")
+    else:
+        title = ax.set_title(f"Pick the best option by clicking on the point.")
 
     # 3 points tolerance
     if with_time:
-#        print(np.dstack(thetas)).squeeze()
-#        print(times)
         time_range = times.max() - times.min() + 1e-11
-        sc = ax.scatter(thetas[0], thetas[1], s=(times-times.min())/time_range * 60 + 20, c=thetas[2], marker="o", alpha=0.5, picker=3, cmap=cmap)
+        
+    if len(thetas)==3:
+        if with_time:
+            sc = ax.scatter(thetas[0], thetas[1], s=(times-times.min())/time_range * 60 + 20, c=thetas[2], marker="o", alpha=0.5, picker=3, cmap=cmap)
+        else:
+            sc = ax.scatter(thetas[0], thetas[1], c=thetas[2], marker="o", alpha=0.5, picker=3, cmap=cmap)
         pyplot.colorbar(sc, ax=ax)
-        if borders is not None:
-            ax.set_xlim(borders[0])
-            ax.set_ylim(borders[1])
-
+    elif len(thetas)==2:
+        if with_time:
+            sc = ax.scatter(thetas[0], thetas[1], s=(times-times.min())/time_range * 60 + 20, marker="o", alpha=0.5, picker=3)
+        else:
+            sc = ax.scatter(thetas[0], thetas[1], marker="o", alpha=0.5, picker=3)
+    if borders is not None:
+        xmin, xmax = borders[0]
+        delta = xmax-xmin
+        ax.set_xlim(xmin-0.1*delta, xmax+0.1*delta)
+        xmin, xmax = borders[1]
+        delta = xmax-xmin
+        ax.set_ylim(xmin-0.1*delta, xmax+0.1*delta)
+        sc.set_clim(borders[2])
+    else:
+#            pyplot.sca(ax)
+#            pyplot.axis('tight')
+        xmin, xmax = numpy.min(thetas[0]), numpy.max(thetas[0])
+        print(xmin, xmax)
+        dx = xmax-xmin
+        if xmin!=xmax:
+            ax.set_xlim(xmin-0.1*dx, xmax+0.1*dx)
+        ymin, ymax = numpy.min(thetas[1]), numpy.max(thetas[1])
+        print(ymin, ymax)
+        dy = ymax-ymin
+        if ymin!=ymax:
+            ax.set_ylim(ymin-0.1*dy, ymax+0.1*dy)
+            
+            
+        
+            
 
 #        lgnd = pyplot.legend(loc="lower left", numpoints=1, fontsize=100)
-    elif len(objectives) > 2:
-        sc = ax.scatter(thetas[0], thetas[1], s=100, c=times, marker="o", alpha=0.5, picker=3, cmap=cmap)
-        pyplot.colorbar(sc, ax=ax)
-        
-        
-    else:
-        ax.scatter(thetas[0], thetas[1], s=200, marker="o", alpha=0.5, picker=3)
-    ax.grid(True)
-    ax.set_xlabel(objectives[0].label)
-    ax.set_ylabel(objectives[1].label)
+#    elif len(objectives) > 2:
+#        sc = ax.scatter(thetas[0], thetas[1], s=100, c=times, marker="o", alpha=0.5, picker=3, cmap=cmap)
+#        pyplot.colorbar(sc, ax=ax)
+#
+#
+#    else:
+#        ax.scatter(thetas[0], thetas[1], s=200, marker="o", alpha=0.5, picker=3)
+#    ax.grid(True)
+#    ax.set_xlabel(objectives[0].label)
+#    ax.set_ylabel(objectives[1].label)
 
-    # handle adding custom ticks on mirror axis
-    new_ticks_x = objectives[0].mirror_ticks(ax.get_xticks())
-    if new_ticks_x is not None:
-        ax2 = ax.twiny()
-        ax2.set_xlim(ax.get_xlim())
-        ax2.set_xticklabels(new_ticks_x)
-        title.set_y(1.05)
-
-        if with_time:
-            sc.remove()
-            sc = ax2.scatter(thetas[0], thetas[1], s=100, c=times, marker="o", alpha=0.5, picker=3, cmap=cmap)
-        elif len(objectives) > 2:
-            sc.remove()
-            sc = ax2.scatter(thetas[0], thetas[1], s=100, c=thetas[2], marker="o", alpha=0.5, picker=3, cmap=cmap)
-            print("--------------------------------------awrefsdrgsdrfgsdf dsf---------1")
-            
-        else:
-            sc.remove()
-            sc = ax2.scatter(thetas[0], thetas[1], s=200, marker="o", alpha=0.5, picker=3)
-
-    new_ticks_y = objectives[1].mirror_ticks(ax.get_yticks())
-    if new_ticks_y is not None:
-        ax3 = ax.twinx()
-        ax3.set_ylim(ax.get_ylim())
-        ax3.set_yticklabels(new_ticks_y)
-
-        if with_time:
-            sc.remove()
-            sc = ax3.scatter(thetas[0], thetas[1], s=100, c=times, marker="o", alpha=0.5, picker=3,
-                             cmap=cmap)
-        elif len(objectives) > 2:
-            sc.remove()
-            sc = ax3.scatter(thetas[0], thetas[1], s=100, c=thetas[2], marker="o", alpha=0.5, picker=3,
-                             cmap=cmap)
-        else:
-            sc.remove()
-            sc = ax3.scatter(thetas[0], thetas[1], s=200, marker="o", alpha=0.5, picker=3)
+#    # handle adding custom ticks on mirror axis
+#    new_ticks_x = objectives[0].mirror_ticks(ax.get_xticks())
+#    if new_ticks_x is not None:
+#        ax2 = ax.twiny()
+#        ax2.set_xlim(ax.get_xlim())
+#        ax2.set_xticklabels(new_ticks_x)
+#        title.set_y(1.05)
+#
+#        if with_time:
+#            import pdb; pdb.set_trace()
+#            sc.remove()
+#            sc = ax2.scatter(thetas[0], thetas[1], s=100, c=times, marker="o", alpha=0.5, picker=3, cmap=cmap)
+#        elif len(objectives) > 2:
+#            sc.remove()
+#            sc = ax2.scatter(thetas[0], thetas[1], s=100, c=thetas[2], marker="o", alpha=0.5, picker=3, cmap=cmap)
+#            print("--------------------------------------awrefsdrgsdrfgsdf dsf---------1")
+#
+#        else:
+#            sc.remove()
+#            sc = ax2.scatter(thetas[0], thetas[1], s=200, marker="o", alpha=0.5, picker=3)
+#
+#    new_ticks_y = objectives[1].mirror_ticks(ax.get_yticks())
+#    if new_ticks_y is not None:
+#        ax3 = ax.twinx()
+#        ax3.set_ylim(ax.get_ylim())
+#        ax3.set_yticklabels(new_ticks_y)
+#
+#        if with_time:
+#            import pdb; pdb.set_trace()
+#            sc.remove()
+#            sc = ax3.scatter(thetas[0], thetas[1], s=100, c=times, marker="o", alpha=0.5, picker=3,
+#                             cmap=cmap)
+#        elif len(objectives) > 2:
+#            sc.remove()
+#            sc = ax3.scatter(thetas[0], thetas[1], s=100, c=thetas[2], marker="o", alpha=0.5, picker=3,
+#                             cmap=cmap)
+#        else:
+#            sc.remove()
+#            sc = ax3.scatter(thetas[0], thetas[1], s=200, marker="o", alpha=0.5, picker=3)
 
     def onpick(event):
         """Handles the event from the :mod:`matplotlib` to select the points. It
@@ -304,18 +338,20 @@ def select(thetas, objectives, with_time, times, figsize=(10, 10), borders=None)
         """
         global index
         # handle the situation where several points overlap
-        if with_time:
-            print("Selected points:", event.ind)
-            min_z = numpy.min(times[event.ind])
+#        if with_time:
+#            print("Selected points:", event.ind)
+#            min_z = numpy.min(times[event.ind])
 #            candidates = event.ind[times[event.ind] == min_z]
-            candidates = event.ind
-        elif len(objectives) > 2:
-            print("Selected points:", event.ind)
-            # objectives are minimized (see objectives.py)
-            min_z = numpy.min(thetas[2][event.ind])
-            candidates = event.ind[thetas[2][event.ind] == min_z]
-        else:
-            candidates = event.ind
+#            candidates = event.ind
+#        elif len(objectives) > 2:
+#            print("Selected points:", event.ind)
+#            # objectives are minimized (see objectives.py)
+#            min_z = numpy.min(thetas[2][event.ind])
+#            candidates = event.ind[thetas[2][event.ind] == min_z]
+#        else:
+#            candidates = event.ind
+        candidates = event.ind
+        
         print("Picking at random in", candidates)
         index = numpy.random.choice(candidates)
 
