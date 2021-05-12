@@ -256,6 +256,8 @@ class Resolution(Objective):
 
     def evaluate(self, sted_stack, confocal_init, confocal_end, sted_fg, confocal_fg):
         res = decorr_res.decorr_res(image=sted_stack[0])*self.pixelsize/1e-9
-        if res == numpy.inf:
+        # if res == numpy.inf:
+        # Avoids very high values
+        if res >= 2 * self.inf_val:
             res = self.inf_val
         return res

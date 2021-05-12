@@ -248,7 +248,7 @@ def select(thetas, objectives, with_time, times, figsize=(10, 10), borders=None)
 
 #        lgnd = pyplot.legend(loc="lower left", numpoints=1, fontsize=100)
     elif len(objectives) > 2:
-        sc = ax.scatter(thetas[0], thetas[1], s=100, c=times, marker="o", alpha=0.5, picker=3, cmap=cmap)
+        sc = ax.scatter(thetas[0], thetas[1], s=100, c=thetas[2], marker="o", alpha=0.5, picker=3, cmap=cmap)
         pyplot.colorbar(sc, ax=ax)
 
 

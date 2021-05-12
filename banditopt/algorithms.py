@@ -31,10 +31,10 @@ class sklearn_GP(GaussianProcessRegressor):
         super().__init__(RBF(length_scale=length_scale), alpha=noise_level/norm_bound**2, optimizer=None, normalize_y=normalize_y)
         self.noise_var = noise_level
         self.norm_bound = norm_bound
-        
+
     def update(self, X, y):
         self.fit(X,y)
-    
+
     def get_mean_std(self, X):
         mean, sqrt_k = self.predict(X, return_std=True)
 #        std = np.sqrt(std**2 - self.noise_var)
@@ -42,7 +42,7 @@ class sklearn_GP(GaussianProcessRegressor):
 #        std = self.s_ub / numpy.sqrt(self.lambda_) * sqrt_k
         std = self.norm_bound * sqrt_k
         return mean, std
-    
+
     def sample(self, X):
         mean, k = self.predict(X, return_cov=True)
         cov = self.norm_bound**2  * k
@@ -62,7 +62,7 @@ class sklearn_BayesRidge(BayesianRidge):
     def __init__(self, degree,
                  tol=1e-6, fit_intercept=True,
                  compute_score=True,alpha_init=None,
-                 lambda_init=None, 
+                 lambda_init=None,
                  alpha_1=1e-06, alpha_2=1e-06, lambda_1=1e-06, lambda_2=1e-06):
         super().__init__(tol=tol, fit_intercept=fit_intercept,
                          compute_score=compute_score, alpha_init=alpha_init,
@@ -70,17 +70,17 @@ class sklearn_BayesRidge(BayesianRidge):
                         alpha_1=alpha_1, alpha_2=alpha_2, lambda_1=lambda_1, lambda_2=lambda_2)
         self.degree=degree
 
-        
+
     def update(self, X, y):
         """Update the regression model using the observations *y* acquired at
         locations *X*.
-        
+
         :param action: A 2d array of locations.
         :param reward: A 1-D array of observations.
         """
         X = PolynomialFeatures(self.degree).fit_transform(X)[:,1:]
         self.fit(X,y.flatten())
-    
+
     def get_mean_std(self, X):
         """Predict mean and standard deviation at given points *X*.
 
@@ -91,7 +91,7 @@ class sklearn_BayesRidge(BayesianRidge):
         mean, std = self.predict(X, return_std=True)
         std = np.sqrt(std**2 - (1/self.alpha_))
         return mean, std
-    
+
     def sample(self, X):
         """Sample a function evaluated at points *X*.
 
@@ -117,7 +117,7 @@ class TS_sampler():
         self.regressor = regressor
         self.X = None
         self.y = None
-        
+
     def predict(self, X_pred):
         """Predict mean and standard deviation at given points *X_pred*.
 
@@ -130,7 +130,7 @@ class TS_sampler():
             mean = np.full(X_pred.shape[0], 0)
             std = np.full(X_pred.shape[0], 1)
             return mean, std
-        
+
     def sample(self, X_sample):
         """Sample a function evaluated at points *X_sample*. When no points have
         been observed yet, the function values are sampled uniformly between 0 and 1.
@@ -152,7 +152,7 @@ class TS_sampler():
     def update(self, action, reward):
         """Update the regression model using the observations *reward* acquired at
         location *action*.
-        
+
         :param action: A 2d array of locations.
         :param reward: A 1-D array of observations.
         """
@@ -177,7 +177,7 @@ class custom_GP_TS:
     :param s_ub: An initial upper bound on :math:`\sigma`.
     """
     def __init__(self, kernel_str ,alpha):
-    
+
         kernel = eval(kernel_str)
         gp = GaussianProcessRegressor(kernel=kernel,
                                       optimizer=None,
@@ -221,7 +221,7 @@ class custom_GP_TS:
         """Update the kernel regression model using the observations *reward* acquired at
         location *action*. Estimate upper and lower bounds on the noise variance using
         :func:`estimate_noise` with confidence :math:`\delta=0.1`.
-        
+
         :param action: A 2d array of locations.
         :param reward: A 1-D array of observations.
         :param `*args`: Dummy parameter to handle functions of inheritated classes.
@@ -255,19 +255,19 @@ class linear_regression():
         mean = X@self.weights_
         cov = X@self.weights_cov_@X.T
         return mean, cov
-    
+
     def get_mean_std(self,X):
         mean, cov = self.predict(X)
         std = np.sqrt(cov.diagonal())
         return mean, std
-    
+
     def sample(self, X):
         X = np.concatenate([X, np.ones(X.shape[0])], axis=1)
         sampled_weigths = np.random.multivariate_normal(self.weights, self.weights_cov_)
         return X@sampled_weigths
-    
 
-        
+
+
 
 
 class poly_reg_TS():
@@ -277,17 +277,17 @@ class poly_reg_TS():
         self.poly_features_maker = PolynomialFeatures(degree).fit_transform
         self.X = None
         self.y = None
-        
+
     def predict(self, X_pred):
         X_pred = self.poly_features_maker(X_pred)
         mean, cov = linear_model.predict(X_pred)
         std = np.sqrt(cov.diagonal())
         return mean, std
-        
+
     def sample(self, X_sample):
         X_sample = self.poly_features_maker(X_sample)
         return self.linear_model.sample(X_sample)
-        
+
     def update(self, action, reward):
         if self.X:
             self.X = np.append(self.X, action, axis=0)
@@ -418,7 +418,7 @@ class Kernel_TS:
         """Update the kernel regression model using the observations *reward* acquired at
         location *action*. Estimate upper and lower bounds on the noise variance using
         :func:`estimate_noise` with confidence :math:`\delta=0.1`.
-        
+
         :param action: A 2d array of locations.
         :param reward: A 1-D array of observations.
         :param `*args`: Dummy parameter to handle functions of inheritated classes.
@@ -500,7 +500,7 @@ class Kernel_TS_cholesky:
         """Update the kernel regression model using the observations *reward* acquired at
         location *action*. Estimate upper and lower bounds on the noise variance using
         :func:`estimate_noise` with confidence :math:`\delta=0.1`.
-        
+
         :param action: A 2d array of locations.
         :param reward: A 1-D array of observations.
         :param `*args`: Dummy parameter to handle functions of inheritated classes.
@@ -518,7 +518,7 @@ class Kernel_TS_cholesky:
                                     norm_bound, delta)
         lambda_, lambda_star = s_ub**2/norm_bound**2, s_lb**2/norm_bound**2
         self.s_lb, self.s_ub, self.lambda_, self.lambda_star = s_lb, s_ub, lambda_, lambda_star
-        
+
 class Kernel_TS_eigh:
     # cholesky decomposition is used for the sampling process instead of the default svd
     """This class relies on kernel regression to generate options to present to the user
@@ -581,7 +581,7 @@ class Kernel_TS_eigh:
         """Update the kernel regression model using the observations *reward* acquired at
         location *action*. Estimate upper and lower bounds on the noise variance using
         :func:`estimate_noise` with confidence :math:`\delta=0.1`.
-        
+
         :param action: A 2d array of locations.
         :param reward: A 1-D array of observations.
         :param `*args`: Dummy parameter to handle functions of inheritated classes.
@@ -608,7 +608,7 @@ class Kernel_TS_PseudoActions(Kernel_TS):
     confidence interval on the noise standard deviation :math:`\sigma` [Durand2018]_.
     It extends the class :class:`Kernel_TS` to hallucinate pseudo-actions (and associated
     pseudo-rewards). Pseudo-actions are reflected at over the boundaries of the space and
-    
+
 
     :param bandwidth: The bandwidth of the RBF kernel.
     :param s_lb: An initial lower bound on :math:`\sigma`.
@@ -662,7 +662,7 @@ class Kernel_TS_PseudoActions(Kernel_TS):
         """Update the kernel regression model using the observations *reward* acquired at
         location *action*. Estimate upper and lower bounds on the noise variance using
         :func:`estimate_noise` with confidence :math:`\delta=0.1`.
-        
+
         :param action: A 2d array of locations.
         :param reward: A 1-D array of observations.
         :param space_bounds: A list of tuple (lower, upper) bounds, bounding the input space in
@@ -740,17 +740,17 @@ class poly_reg_TS():
         self.poly_features_maker = PolynomialFeatures(degree).fit_transform
         self.X = None
         self.y = None
-        
+
     def predict(self, X_pred):
         X_pred = self.poly_features_maker(X_pred)
         mean, cov = self.linear_model.predict(X_pred)
         std = np.sqrt(cov.diagonal())
         return mean, std
-        
+
     def sample(self, X_sample):
         X_sample = self.poly_features_maker(X_sample)
         return self.linear_model.sample(X_sample)
-        
+
     def update(self, action, reward):
         if self.X is not None:
             self.X = np.append(self.X, action, axis=0)
@@ -759,11 +759,11 @@ class poly_reg_TS():
             self.X = action
             self.y = reward
         self.linear_model.fit(self.poly_features_maker(self.X), self.y)
-        
-    
-    
 
-        
+
+
+
+
 
 
 class poly_reg_TS_discrete():
@@ -776,7 +776,7 @@ class poly_reg_TS_discrete():
         self.y = None
         self.get_poly_features = sklearn.preprocessing.PolynomialFeatures(degree=poly_degree).fit_transform
         self.A = None
-    
+
     def X_for_poly_reg(self, X):
         if type(X) == np.ndarray:
             if len(X.shape) > 1:
@@ -785,9 +785,9 @@ class poly_reg_TS_discrete():
                 return self.get_poly_features(X[np.newaxis, :])
         else:
             return self.get_poly_features(np.asarray(X))
-            
-        
-        
+
+
+
     def predict(self, X_pred):
         X_pred = self.X_for_poly_reg(X_pred)
         if self.X is not None:
@@ -797,7 +797,7 @@ class poly_reg_TS_discrete():
             self.A = self.regul_cte*self.s**-2*np.identity(X_pred.shape[1])
         cov = X_pred@np.linalg.inv(self.A)@X_pred.T
         return mean.flatten(), np.sqrt(np.diag(cov)).flatten()
-    
+
     def sample(self, X_sample):
         X_sample = self.X_for_poly_reg(X_sample)
         if self.X is not None:
@@ -808,7 +808,7 @@ class poly_reg_TS_discrete():
             sampled_w = np.random.multivariate_normal(np.zeros(X_sample.shape[1]), np.linalg.inv(self.A))[:,np.newaxis]
         f_tilde = X_sample@sampled_w
         return f_tilde.flatten()
-    
+
     def update(self, action, reward):
         if self.X is None:
             self.X = self.X_for_poly_reg(action)
@@ -840,7 +840,7 @@ class poly1D():
         return X**np.arange(len(weigths))[np.newaxis,:]@self.weigths
     def sample_1D(self, X):
         return self.evaluate_1D(X) + np.random.normal(0,self.noise, X.shape[0])[:,np.newaxis]
-    
+
 # Two local maxima
 weigths = np.array([[ 0.44301204],
        [ 0.37033451],
@@ -908,14 +908,13 @@ class poly_from_weights_pairs():
         X1 = PolynomialFeatures(degree=self.degree).fit_transform(X[:,[0,1]])
         X2 = PolynomialFeatures(degree=self.degree).fit_transform(X[:,[2,3]])
         return ((X1@self.weights_pair[0] + X2@self.weights_pair[1])/2)[:,np.newaxis]
-    
+
     def sample(self, X):
         return self.evaluate(X) + np.random.normal(0, self.noise, X.shape[0])[:,np.newaxis]
 
-    
+
 obj_dict = {
     "poly1":poly_from_weights_pairs(weights_pairs[0], 4, 0.1),
     "poly2":poly_from_weights_pairs(weights_pairs[1], 4, 0.1),
     "poly3":poly_from_weights_pairs(weights_pairs[2], 4, 0.1),
 }
-
