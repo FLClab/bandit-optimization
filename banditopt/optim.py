@@ -1,7 +1,10 @@
 from shutil import copyfile
 
 import skimage.io as skio
-import pygmo
+try:
+    import pygmo
+except ImportError:
+    print("Pygmo is not installed")
 
 import os
 import time

@@ -1,4 +1,4 @@
-import src.optim as optim
+from banditopt import optim
 
 config =  dict(
     save_folder="debug_trialX_weight_prior2",
@@ -44,8 +44,9 @@ config =  dict(
     optim_length = 40,
     nbre_trials = 1,
     borders = [(0,300), (0,1), (0,4)],
+    pareto_only=False,
 #    borders = None
               )
-    
+
 
 optim.run_TS(config=config, **config)
