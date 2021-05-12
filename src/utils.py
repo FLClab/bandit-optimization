@@ -5,7 +5,7 @@
 import os
 
 import numpy
-
+import matplotlib; matplotlib.use("TkAgg")
 from matplotlib import pyplot
 
 from scipy.optimize import curve_fit
@@ -125,7 +125,7 @@ def get_foreground(img):
     """Return a background mask of the given image using the OTSU method to threshold.
 
     :param 2d-array img: The image.
-    
+
     :returns: A mask (2d array of bool: True on foreground, False on background).
     """
     val = filters.threshold_otsu(img)

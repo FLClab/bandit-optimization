@@ -5,14 +5,14 @@ content.
 """
 
 import numpy
-
-from matplotlib import gridspec, pyplot, widgets
+import matplotlib; matplotlib.use("TkAgg")
+from matplotlib import gridspec, pyplot , widgets
 pyplot.ion()
 
 import skimage
 
 try:
-    import microscope
+    import src.microscope as microscope
 except:
     print("Could not load microscope interface. Some functions may not be available.")
 import src.utils as utils
@@ -95,7 +95,7 @@ class LinePicker:
                         # keep only the first 40 pixels
                         self.profile = profile[:40]
                         self.axprofile.plot(self.positions, self.profile)
-                        
+
                         # Plot line picked
                         self.aximg.scatter(cc,rr, s=1,)
                         # Plot start stop
@@ -218,7 +218,7 @@ def select(thetas, objectives, with_time, times, figsize=(10, 10), borders=None)
     :return: The index of the selected point.
     """
     print("Asking user to select best option...")
-    
+
     if borders is not None:
         for idx, y in enumerate(thetas):
             min, max = borders[idx]
@@ -231,7 +231,7 @@ def select(thetas, objectives, with_time, times, figsize=(10, 10), borders=None)
     # set to your favorite colormap (see https://matplotlib.org/users/colormaps.html)
 #    cmap = pyplot.cm.get_cmap("nipy_spectral")
     cmap = pyplot.cm.get_cmap("cividis")
-    
+
     if with_time:
         title = ax.set_title(f"Pick the best option by clicking on the point. Tmin={numpy.min(times)}, Tmax={numpy.max(times)}")
     else:
@@ -240,7 +240,7 @@ def select(thetas, objectives, with_time, times, figsize=(10, 10), borders=None)
     # 3 points tolerance
     if with_time:
         time_range = times.max() - times.min() + 1e-11
-        
+
     if len(thetas)==3:
         if with_time:
             sc = ax.scatter(thetas[0], thetas[1], s=(times-times.min())/time_range * 60 + 20, c=thetas[2], marker="o", alpha=0.5, picker=3, cmap=cmap)
@@ -273,10 +273,10 @@ def select(thetas, objectives, with_time, times, figsize=(10, 10), borders=None)
         dy = ymax-ymin
         if ymin!=ymax:
             ax.set_ylim(ymin-0.1*dy, ymax+0.1*dy)
-            
-            
-        
-            
+
+
+
+
 
 #        lgnd = pyplot.legend(loc="lower left", numpoints=1, fontsize=100)
 #    elif len(objectives) > 2:
@@ -351,7 +351,7 @@ def select(thetas, objectives, with_time, times, figsize=(10, 10), borders=None)
 #        else:
 #            candidates = event.ind
         candidates = event.ind
-        
+
         print("Picking at random in", candidates)
         index = numpy.random.choice(candidates)
 
@@ -362,7 +362,7 @@ def select(thetas, objectives, with_time, times, figsize=(10, 10), borders=None)
     pyplot.close()
     assert index is not None, "User did not pick any point!"
     return index
-    
+
 ## Initial version, with no varying point size and color
 #def select(thetas, objectives, with_time, times, figsize=(10, 10)):
 #    """Asks the user to select the best option by clicking on the points from the

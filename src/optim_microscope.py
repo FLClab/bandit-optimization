@@ -1,12 +1,14 @@
+# TESTED ON THE ENVIRONMENT py3kclone2
+
 from shutil import copyfile
 import src.algorithms as algorithms
 import src.objectives as objectives
 from src.algorithms import TS_sampler
 import src.user as user
 import src.utils as utils
-import src.simulate_image as simulation
+# import src.simulate_image as simulation
 import skimage.io as skio
-import pygmo
+# import pygmo
 
 import os
 import time
@@ -18,18 +20,29 @@ import pickle
 
 
 from inspect import currentframe, getframeinfo
-import matplotlib; matplotlib.use("TkAgg")
+import src.microscope as microscope
+import functools
+
 
 
 config_conf = microscope.get_config("Setting confocal configuration.", "conf_logo.png")
 config_sted = microscope.get_config("Setting STED configuration.", "sted_logo.png")
+config_overview = microscope.get_config("Setting STED configuration.")
 
-params_set = {"Dwelltime": microscope.set_dwelltime,
-              "Exc/Power": functools.partial(microscope.set_power, laser_id=5),
-              "STED/Power": functools.partial(microscope.set_power, laser_id=6),
-              "Line_Step": functools.partial(microscope.set_linestep, step_id=0),
-              "Rescue/Signal_Level": functools.partial(microscope.set_rescue_signal_level, channel_id=0),
-              "Rescue/Strength": functools.partial(microscope.set_rescue_strength, channel_id=0)}
+
+params_set = {"dwelltime": microscope.set_dwelltime,
+              "p_exc": functools.partial(microscope.set_power, laser_id=5),
+              "p_sted": functools.partial(microscope.set_power, laser_id=6),
+              # "Line_Step": functools.partial(microscope.set_linestep, step_id=0),
+              # "Rescue/Signal_Level": functools.partial(microscope.set_rescue_signal_level, channel_id=0),
+              # "Rescue/Strength": functools.partial(microscope.set_rescue_strength, channel_id=0)
+              }
+
+
+import pdb; pdb.set_trace()
+
+
+
 
 
 
@@ -41,7 +54,7 @@ regressors_dict = {"sklearn_BayesRidge":algorithms.sklearn_BayesRidge,
                    "sklearn_GP":algorithms.sklearn_GP,
 }
 
-def run_TS(config, save_folder="debug_trial", regressor_name="sklearn_BayesRidge", regressor_args= {"default":{}, "SNR":{}, "bleach":{}}, n_divs_default = 25, param_names = ["p_ex", "p_sted"], with_time=True, default_values_dict={"dwelltime":20e-6},params_conf = { 'p_ex':100e-6, 'p_sted':0, 'dwelltime':10.0e-6,}, x_mins=[400e-6*2**-3, 900e-6*2**-3, ], x_maxs=[400e-6*2**4, 900e-6*2**4], obj_names=["SNR", "bleach"], optim_length = 30, nbre_trials = 2, pareto_only=True, borders=None):
+def run_TS(config, save_folder="debug_trial", regressor_name="sklearn_BayesRidge", regressor_args= {"default":{}, "SNR":{}, "bleach":{}}, n_divs_default = 25, param_names = ["p_ex", "p_sted"], with_time=True, default_values_dict={"dwelltime":20e-6},params_conf = { 'p_ex':100e-6, 'p_sted':0, 'dwelltime':10.0e-6,}, x_mins=[400e-6*2**-3, 900e-6*2**-3, ], x_maxs=[400e-6*2**4, 900e-6*2**4], obj_names=["SNR", "bleach"], optim_length = 30, nbre_trials = 2, pareto_only=False, borders=None, param_space_bounds=None):
     """This function does multi-objective Thompson sampling optimization of parameters of simulated STED images.
 
     :param config: Dictionary of all the function parameters to be saved as a yaml file
@@ -62,11 +75,12 @@ def run_TS(config, save_folder="debug_trial", regressor_name="sklearn_BayesRidge
               for tradeoff selection
     """
 
-    
+
 
     ndims = len(param_names)
     n_points = [n_divs_default]*ndims
     config["computer"] = platform.uname()._asdict()
+
 
     # Create directory and save some data
     if not os.path.isfile(save_folder):
@@ -75,10 +89,18 @@ def run_TS(config, save_folder="debug_trial", regressor_name="sklearn_BayesRidge
     copyfile("src/algorithms.py", os.path.join(save_folder,"algorithms.py"))
     with open(os.path.join(save_folder, "config.yml"), 'w') as f:
         yaml.dump(config, f)
+
+    with open(os.path.join(save_folder, "imspector_config_confocal"), "w") as f:
+        config = config_conf.parameters("")
+        yaml.dump(config, f)
+    with open(os.path.join(save_folder, "imspector_config_sted"), "w") as f:
+        config = config_sted.parameters("")
+        yaml.dump(config, f)
+
     im_dir_names = ("conf1", "sted", "conf2", "fluomap", "y_samples", "pareto_indexes")
     for dir_name in im_dir_names:
         os.mkdir(os.path.join(save_folder, dir_name))
-        
+
 
     for no_trial in range(nbre_trials):
         print(f"Trial {no_trial}...")
@@ -94,6 +116,12 @@ def run_TS(config, save_folder="debug_trial", regressor_name="sklearn_BayesRidge
         # Define the parameter values to predict
         grids = np.meshgrid(*[np.linspace(x_mins[i], x_maxs[i], n_points[i]) for i in range(ndims)])
         X = np.hstack([grid.ravel()[:,np.newaxis] for grid in grids])
+
+
+        regions = []
+        while len(regions) < optim_length:
+            # regions.append(user.get_regions(overview_name='640 {0}'))
+             regions.append(user.get_regions(config=config_overview, name='640'))
 
         s_lb, s_ub, dts, dts_sampling, dts_update = [], [], [], [], []
         for iter_idx in range(optim_length):
@@ -112,7 +140,7 @@ def run_TS(config, save_folder="debug_trial", regressor_name="sklearn_BayesRidge
             else:
                 col = param_names.index("dwelltime")
                 timesperpixel = X[:,col] #* default_values_dict["pixelsize"] #* (default_values_dict[im_size_nm]*1e-9)**2/default_values_dict[pixelsize]**2w
-            
+
 
             # Select a point
             if iter_idx==0:
@@ -133,53 +161,41 @@ def run_TS(config, save_folder="debug_trial", regressor_name="sklearn_BayesRidge
                 else:
                     x_selected = X[user.select(y_samples, [obj_dict[name] for name in obj_names], with_time, timesperpixel, borders=borders), :][:,np.newaxis]
             print("x_selected=", x_selected)
-            
+
+
+
+            pyplot.close('all')
+            x, y = regions[iter_idx]
+            microscope.set_offsets(config_conf, x, y)
+            microscope.set_offsets(config_sted, x, y)
             # Acquire conf1, sted_image, conf2
             for i in range(len(x_selected)):
-                default_values_dict[param_names[i]] = x_selected[i]
-#            p_sted = default_values_dict["p_sted"]
-#            default_values_dict["p_sted"] = 0.
-            defaults_list = []
-            for key in params_conf:
-                defaults_list.append(default_values_dict[key])
-                default_values_dict[key] = params_conf[key]
-            default_values_dict["molecules_disposition"] = None
-            sim_data = simulation.simulate_image(**default_values_dict)
-            conf1 = sim_data['Acquired signal (photons)']
-            skio.imsave(os.path.join(save_folder, "conf1",str(no_trial), str(iter_idx)+".tiff"), conf1)
-            default_values_dict["molecules_disposition"] = sim_data["Bleached datamap"]
-            skio.imsave(os.path.join(save_folder, "fluomap",str(no_trial), str(iter_idx)+".tiff"), default_values_dict["molecules_disposition"])
-#            default_values_dict["p_sted"] = p_sted
-            for i, key in enumerate(params_conf):
-                default_values_dict[key] = defaults_list[i]
-                print("default_values_dict[key]=", default_values_dict[key])
-            sim_data = simulation.simulate_image(**default_values_dict)
-            sted_image = sim_data['Acquired signal (photons)']
-            skio.imsave(os.path.join(save_folder, "sted",str(no_trial), str(iter_idx)+".tiff"), sted_image)
-            default_values_dict["molecules_disposition"] = sim_data["Bleached datamap"]
-#            default_values_dict["p_sted"] = 0.
-            defaults_list = []
-            for key in params_conf:
-                defaults_list.append(default_values_dict[key])
-                default_values_dict[key] = params_conf[key]
-            sim_data = simulation.simulate_image(**default_values_dict)
-            conf2 = sim_data['Acquired signal (photons)']
-            skio.imsave(os.path.join(save_folder, "conf2",str(no_trial), str(iter_idx)+".tiff"), conf2)
-            for i, key in enumerate(params_conf):
-                default_values_dict[key] = defaults_list[i]
-            
+                params_set[param_names[i]](config_sted, x_selected[i])
+            stacks, _ = microscope.acquire(config_conf)
+            conf1 = stacks[0][0]
+            stacks, _ = microscope.acquire(config_sted)
+            conf2 = stacks[0][0]
+            stacks, _ = microscope.acquire(config_conf)
+            conf2 = stacks[0][0]
+
+
+
+
+
+
+
             # foreground on confocal image
             fg_c = utils.get_foreground(conf1)
             # foreground on sted image
             fg_s = utils.get_foreground(sted_image)
             # remove STED foreground points not in confocal foreground, if any
             fg_s *= fg_c
-            
+
             # Evaluate the objective results
             obj_dict["Resolution"] = objectives.Resolution(pixelsize=default_values_dict["pixelsize"]) #Just in case the pixelsize have changed
             y_result = np.array([obj_dict[name].evaluate([sted_image], conf1, conf2, fg_s, fg_c) for name in obj_names])
             print(x_selected.T, y_result)
-            
+
 #            y_result = obj_func.sample(x_selected.T)
             t0 = time.time()
             [algos[i].update(x_selected.T, y_result[i].flatten()) for i in range(len(obj_names))]
@@ -198,8 +214,5 @@ def run_TS(config, save_folder="debug_trial", regressor_name="sklearn_BayesRidge
     #        np.savetxt(os.path.join(save_folder,f's_ub_{no_trial}.csv'), np.array(s_ub), delimiter=",")
             np.savetxt(os.path.join(save_folder,f'dts_sampling_{no_trial}.csv'), np.array(dts_sampling), delimiter=",")
             np.savetxt(os.path.join(save_folder,f'dts_update_{no_trial}.csv'), np.array(dts_update), delimiter=",")
-            
-#            print("line =", getframeinfo(currentframe()).lineno, "iter_idx=", iter_idx,"np.unique(X[:,0]) =", np.unique(X[:,0]))
-            
-        
 
+#            print("line =", getframeinfo(currentframe()).lineno, "iter_idx=", iter_idx,"np.unique(X[:,0]) =", np.unique(X[:,0]))

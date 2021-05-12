@@ -44,8 +44,9 @@ config =  dict(
     optim_length = 40,
     nbre_trials = 1,
     borders = [(0,300), (0,1), (0,4)],
-#    borders = None
+#    borders = None,
+    param_space_bounds=None,
               )
-    
+
 
 optim.run_TS(config=config, **config)
