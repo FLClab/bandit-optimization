@@ -7,6 +7,7 @@ from abc import ABC, abstractmethod
 
 import numpy
 import itertools
+import warnings
 
 from statsmodels.tsa.stattools import acf
 
@@ -255,7 +256,9 @@ class Resolution(Objective):
         self.res_cap=250
 
     def evaluate(self, sted_stack, confocal_init, confocal_end, sted_fg, confocal_fg):
-        res = decorr_res.decorr_res(image=sted_stack[0])*self.pixelsize/1e-9
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            res = decorr_res.decorr_res(image=sted_stack[0])*self.pixelsize/1e-9
         if res > self.res_cap:
             res = self.res_cap
         return res
