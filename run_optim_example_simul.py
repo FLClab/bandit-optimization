@@ -44,8 +44,13 @@ config =  dict(
     optim_length = 40,
     nbre_trials = 1,
     borders = [(0,300), (0,1), (0,4)],
+<<<<<<< HEAD
+#    borders = None,
+    param_space_bounds=None,
+=======
     pareto_only=False,
 #    borders = None
+>>>>>>> 891fd363f834db3f7ec2d69181cbfdc8b4fe6496
               )
 
 

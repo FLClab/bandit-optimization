@@ -1,0 +1,31 @@
+borders: null
+computer: !!python/object/apply:collections.OrderedDict
+- - [system, Windows]
+  - [node, PDK-ABBERIOR]
+  - [release, '10']
+  - [version, 10.0.19041]
+  - [machine, AMD64]
+  - [processor, 'Intel64 Family 6 Model 60 Stepping 3, GenuineIntel']
+default_values_dict: {background: 499999.99999999994, bleach: true, darkcount: 0,
+  dwelltime: 1.0e-05, im_size_nm: 1000, molecules_disposition: null, nb_molecules_per_point_src: 50,
+  nb_pt_src: 8, noise: true, p_ex: 5.0e-05, p_sted: 3.0e-06, pixelsize: 2.0e-08}
+n_divs_default: 25
+nbre_trials: 3
+obj_names: [Resolution, Bleach]
+optim_length: 50
+param_names: [p_sted]
+param_space_bounds: null
+params_conf: {p_ex: 2.0e-05, p_sted: 0}
+pareto_only: false
+regressor_args:
+  Bleach: {alpha_init: 277.77777777777777, lambda_init: 1.5366400000000002e-07}
+  Resolution: {alpha_init: 0.1111111111111111, lambda_init: 1.5366400000000004e-11}
+  SNR: {alpha_init: 4.0, lambda_init: 6.829511111111114e-10}
+  default: {alpha_1: 1.0e-06, alpha_2: 1.0e-06, alpha_init: 100.11183053174646, compute_score: true,
+    degree: 4, fit_intercept: true, lambda_1: 1.0e-06, lambda_2: 1.0e-06, lambda_init: 1.4595412992911199,
+    tol: 1.0e-06}
+regressor_name: sklearn_BayesRidge
+save_folder: sted_deg4_microscope
+with_time: true
+x_maxs: [90]
+x_mins: [0]

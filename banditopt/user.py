@@ -5,14 +5,14 @@ content.
 """
 
 import numpy
-
-from matplotlib import gridspec, pyplot, widgets
+import matplotlib; matplotlib.use("TkAgg")
+from matplotlib import gridspec, pyplot , widgets
 pyplot.ion()
 
 import skimage
 
 try:
-    import microscope
+    import src.microscope as microscope
 except:
     print("Could not load microscope interface. Some functions may not be available.")
 from . import utils
@@ -240,6 +240,10 @@ def select(thetas, objectives, with_time, times, figsize=(10, 10), borders=None)
     # 3 points tolerance
     if with_time:
         time_range = times.max() - times.min() + 1e-11
+<<<<<<< HEAD:src/user.py
+
+=======
+>>>>>>> 891fd363f834db3f7ec2d69181cbfdc8b4fe6496:banditopt/user.py
     if len(thetas)==3:
         if with_time:
             sc = ax.scatter(thetas[0], thetas[1], s=(times-times.min())/time_range * 60 + 20, c=thetas[2], marker="o", alpha=0.5, picker=3, cmap=cmap)
@@ -350,6 +354,10 @@ def select(thetas, objectives, with_time, times, figsize=(10, 10), borders=None)
 #        else:
 #            candidates = event.ind
         candidates = event.ind
+<<<<<<< HEAD:src/user.py
+
+=======
+>>>>>>> 891fd363f834db3f7ec2d69181cbfdc8b4fe6496:banditopt/user.py
         print("Picking at random in", candidates)
         index = numpy.random.choice(candidates)
 
