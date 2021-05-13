@@ -89,7 +89,7 @@ class sklearn_BayesRidge(BayesianRidge):
         :param reward: A 1-D array of observations.
         """
         if self.param_space_bounds is not None:
-            rescale_X(X, self.param_space_bounds)
+            X = rescale_X(X, self.param_space_bounds)
         X = PolynomialFeatures(self.degree).fit_transform(X)[:,1:]
         self.fit(X,y.flatten())
 
@@ -100,7 +100,7 @@ class sklearn_BayesRidge(BayesianRidge):
         :returns: An array of means and an array of standard deviations.
         """
         if self.param_space_bounds is not None:
-            rescale_X(X, self.param_space_bounds)
+            X = rescale_X(X, self.param_space_bounds)
         X = PolynomialFeatures(self.degree).fit_transform(X)[:,1:]
         mean, std = self.predict(X, return_std=True)
         std = np.sqrt(std**2 - (1/self.alpha_))
@@ -113,7 +113,7 @@ class sklearn_BayesRidge(BayesianRidge):
         :returns: A 1-D array of the pointwise evaluation of a sampled function.
         """
         if self.param_space_bounds is not None:
-            rescale_X(X, self.param_space_bounds)
+            X = rescale_X(X, self.param_space_bounds)
         rng = np.random.default_rng()
 #        weigths = self.coef_
 #        weigths[0] = self.intercept_
