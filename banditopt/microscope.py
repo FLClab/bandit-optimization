@@ -10,7 +10,7 @@ import pickle
 
 import pyautogui
 def click_on_screenshot(screenshot_png):
-    app_logo = (numpy.array(pyautogui.locateOnScreen(screenshot_png))).astype(int)
+    app_logo = (numpy.array(pyautogui.locateOnScreen(screenshot_png, grayscale=True))).astype(int)
     pyautogui.click(x=app_logo[0], y=app_logo[1], clicks=1, interval=0, button='left')
 
 
@@ -38,7 +38,7 @@ def get_config(message=None, image=None):
         click_on_screenshot("auto_gui/Imspector_logo.png")
         click_on_screenshot("auto_gui/"+image)
         click_on_screenshot("auto_gui/promp_logo.png")
-        click_on_screenshot("auto_gui/setting_conf_logo.png")
+        # click_on_screenshot("auto_gui/setting_conf_logo.png")
         pyautogui.typewrite(['enter', 'enter'])
     input()
     return measurement.active_configuration()
@@ -146,7 +146,7 @@ def get_overview(conf, prefix="Overview ", name=None):
         overview = prefix + name
     print('overview')
     #import pdb; pdb.set_trace()
-    import pdb; pdb.set_trace()
+    # import pdb; pdb.set_trace()
     return conf.stack(overview).data()[0][0]
 
 
@@ -197,22 +197,65 @@ def set_numberframe(conf, num):
     conf.set_parameters("ExpControl/scan/range/t/res", num)
 
 
-def set_power(conf, power, laser_id,channel_id=0):
-    '''Set the power of a laser in a specific configuration.
+# def set_power(conf, power, laser_id,channel_id=0):
+#     '''Set the power of a laser in a specific configuration.
+#
+#     :param conf: A configuration object.
+#     :param laser_id: ID of the laser in Imspector (starting from 0).
+#     :param power: Power of the laser in [0, 1].
+#     '''
+#     params = conf.parameters("ExpControl/measurement")
+#
+#     if laser_id == 0:
+#         print('405 nm')
+#         params["channels"][channel_id]["lasers"][laser_id]["power"]["calibrated"] = power*1e-3
+#     else:
+#         print('all good')
+#         params["channels"][channel_id]["lasers"][laser_id]["power"]["calibrated"] = power
+#     conf.set_parameters("ExpControl/measurement", params)
+# def set_power(conf, power, laser_id):
+#     '''Set the power of a laser in a specific configuration.
+#
+#     :param conf: A configuration object.
+#     :param int laser_id: Imdex of the laser in Imspector (starting from 0).
+#     :param float power: Power of the laser in [0, 1].
+#     '''
+#     lasers = conf.parameters('ExpControl/lasers/power_calibrated')
+#     lasers[laser_id]["value"]["calibrated"] = power * 100
+#     conf.set_parameters("ExpControl/lasers/power_calibrated", lasers)
+# import time
+# def set_power(conf, power, laser_id):
+#     '''Set the power of a laser in a specific configuration.
+#
+#     :param conf: A configuration object.
+#     :param int laser_id: Imdex of the laser in Imspector (starting from 0).
+#     :param float power: Power of the laser in [0, 1].
+#     '''
+#     lasers = conf.parameters("ExpControl/measurement/lasers")
+#     lasers[laser_id]['power']['calibrated'] = power
+#     print(power, laser_id)
+#     conf.set_parameters("ExpControl/measurement/lasers", lasers)
+#     while round(get_power(conf, laser_id), 2) != round(power, 2):
+#         print('Retrying to change the power in 0.5 seconds...')
+#         time.sleep(0.5)
+#         conf.set_parameters("ExpControl/measurement/lasers", lasers)
+import pyperclip
+def set_power(conf, power, laser_id):
+    print('WARNING: THIS JUST SETS THE STED POW WITH PYAUTOGUI')
+    click_on_screenshot("auto_gui/Imspector_logo.png")
+    click_on_screenshot("auto_gui/sted_logo.png")
+    pow_loc = (numpy.array(pyautogui.locateOnScreen("auto_gui/pow_logo.png", grayscale=True))).astype(int)
+    pyautogui.moveTo(pow_loc[0]+100, pow_loc[1]+10)
+    pyperclip.copy(str(power))
+    pyautogui.click()
+    pyautogui.click()
+    pyautogui.hotkey('ctrl', 'v')
+    click_on_screenshot("auto_gui/promp_logo.png")
 
-    :param conf: A configuration object.
-    :param laser_id: ID of the laser in Imspector (starting from 0).
-    :param power: Power of the laser in [0, 1].
-    '''
-    params = conf.parameters("ExpControl/measurement")
 
-    if laser_id == 0:
-        print('405 nm')
-        params["channels"][channel_id]["lasers"][laser_id]["power"]["calibrated"] = power*1e-3
-    else:
-        print('all good')
-        params["channels"][channel_id]["lasers"][laser_id]["power"]["calibrated"] = power
-    conf.set_parameters("ExpControl/measurement", params)
+
+
+
 
 
 def set_dwelltime(conf, dwelltime, channel_id=0):

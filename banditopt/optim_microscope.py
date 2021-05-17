@@ -1,11 +1,10 @@
 # TESTED ON THE ENVIRONMENT py3kclone2
 
 from shutil import copyfile
-import src.algorithms as algorithms
-import src.objectives as objectives
-from src.algorithms import TS_sampler
-import src.user as user
-import src.utils as utils
+from . import algorithms, objectives, user, utils, microscope
+
+from .algorithms import TS_sampler
+
 # import src.simulate_image as simulation
 import skimage.io as skio
 # import pygmo
@@ -17,21 +16,22 @@ import numpy as np
 import platform
 
 import pickle
+import matplotlib; matplotlib.use("TkAgg")
+import matplotlib.pyplot as plt
 
 
 from inspect import currentframe, getframeinfo
-import src.microscope as microscope
 import functools
 
 
 
 config_conf = microscope.get_config("Setting confocal configuration.", "conf_logo.png")
 config_sted = microscope.get_config("Setting STED configuration.", "sted_logo.png")
-config_overview = microscope.get_config("Setting STED configuration.")
+
 
 
 params_set = {"dwelltime": microscope.set_dwelltime,
-              "p_exc": functools.partial(microscope.set_power, laser_id=5),
+              "p_ex": functools.partial(microscope.set_power, laser_id=5),
               "p_sted": functools.partial(microscope.set_power, laser_id=6),
               # "Line_Step": functools.partial(microscope.set_linestep, step_id=0),
               # "Rescue/Signal_Level": functools.partial(microscope.set_rescue_signal_level, channel_id=0),
@@ -39,7 +39,7 @@ params_set = {"dwelltime": microscope.set_dwelltime,
               }
 
 
-import pdb; pdb.set_trace()
+
 
 
 
@@ -54,7 +54,7 @@ regressors_dict = {"sklearn_BayesRidge":algorithms.sklearn_BayesRidge,
                    "sklearn_GP":algorithms.sklearn_GP,
 }
 
-def run_TS(config, save_folder="debug_trial", regressor_name="sklearn_BayesRidge", regressor_args= {"default":{}, "SNR":{}, "bleach":{}}, n_divs_default = 25, param_names = ["p_ex", "p_sted"], with_time=True, default_values_dict={"dwelltime":20e-6},params_conf = { 'p_ex':100e-6, 'p_sted':0, 'dwelltime':10.0e-6,}, x_mins=[400e-6*2**-3, 900e-6*2**-3, ], x_maxs=[400e-6*2**4, 900e-6*2**4], obj_names=["SNR", "bleach"], optim_length = 30, nbre_trials = 2, pareto_only=False, borders=None, param_space_bounds=None):
+def run_TS(config, save_folder="debug_trial", regressor_name="sklearn_BayesRidge", regressor_args= {"default":{}, "SNR":{}, "bleach":{}}, n_divs_default = 25, param_names = ["p_ex", "p_sted"], with_time=True, default_values_dict={"dwelltime":20e-6},params_conf = { 'p_ex':100e-6, 'p_sted':0, 'dwelltime':10.0e-6,}, x_mins=[400e-6*2**-3, 900e-6*2**-3, ], x_maxs=[400e-6*2**4, 900e-6*2**4], obj_names=["SNR", "bleach"], optim_length = 30, nbre_trials = 2, pareto_only=False, borders=None, split_sted_params=None):
     """This function does multi-objective Thompson sampling optimization of parameters of simulated STED images.
 
     :param config: Dictionary of all the function parameters to be saved as a yaml file
@@ -85,8 +85,9 @@ def run_TS(config, save_folder="debug_trial", regressor_name="sklearn_BayesRidge
     # Create directory and save some data
     if not os.path.isfile(save_folder):
         os.mkdir(save_folder)
-    copyfile("src/optim.py", os.path.join(save_folder,"optim.py"))
-    copyfile("src/algorithms.py", os.path.join(save_folder,"algorithms.py"))
+    copyfile("banditopt/optim.py", os.path.join(save_folder,"optim.py"))
+    copyfile("banditopt/algorithms.py", os.path.join(save_folder,"algorithms.py"))
+    copyfile('run_optim_example_microscope.py', os.path.join(save_folder,"run_optim_example_microscope.py"))
     with open(os.path.join(save_folder, "config.yml"), 'w') as f:
         yaml.dump(config, f)
 
@@ -97,7 +98,10 @@ def run_TS(config, save_folder="debug_trial", regressor_name="sklearn_BayesRidge
         config = config_sted.parameters("")
         yaml.dump(config, f)
 
-    im_dir_names = ("conf1", "sted", "conf2", "fluomap", "y_samples", "pareto_indexes")
+    im_dir_names = ["conf1", "sted", "conf2", "fluomap", "y_samples", "pareto_indexes"]
+    if split_sted_params is not None:
+        im_dir_names.append("sted_stack")
+        im_dir_names.append("conf_stack")
     for dir_name in im_dir_names:
         os.mkdir(os.path.join(save_folder, dir_name))
 
@@ -118,10 +122,16 @@ def run_TS(config, save_folder="debug_trial", regressor_name="sklearn_BayesRidge
         X = np.hstack([grid.ravel()[:,np.newaxis] for grid in grids])
 
 
-        regions = []
-        while len(regions) < optim_length:
-            # regions.append(user.get_regions(overview_name='640 {0}'))
-             regions.append(user.get_regions(config=config_overview, name='640'))
+        # regions = []
+        # while len(regions) < optim_length:
+        #     # regions.append(user.get_regions(overview_name='640 {0}'))
+        #     print('regions=', regions)
+        #     input("Select a new region on the microscope, then press Enter to continue...")
+        #     regions += user.get_regions(config=config_overview, overview_name='640 {0}')
+
+        config_overview = microscope.get_config("Setting STED configuration.", 'overview_logo.png')
+        regions = user.get_regions(config=config_overview, overview_name='640 {0}')
+        regions.reverse()
 
         s_lb, s_ub, dts, dts_sampling, dts_update = [], [], [], [], []
         for iter_idx in range(optim_length):
@@ -164,19 +174,44 @@ def run_TS(config, save_folder="debug_trial", regressor_name="sklearn_BayesRidge
 
 
 
-            pyplot.close('all')
-            x, y = regions[iter_idx]
+
+            if len(regions)==0:
+                print("Now is the time to select a new overview region.")
+                os.system('pause')
+                config_overview = microscope.get_config("Setting STED configuration.", 'overview_logo.png')
+                regions = user.get_regions(config=config_overview, overview_name='640 {0}')
+                regions.reverse()
+                print('print(regions)', regions)
+            # x, y = regions[iter_idx]
+            print('print(regions)', regions)
+            x, y = regions.pop()
+            print('print(x, y)',x, y)
+            print('print(regions)', regions)
             microscope.set_offsets(config_conf, x, y)
             microscope.set_offsets(config_sted, x, y)
             # Acquire conf1, sted_image, conf2
-            for i in range(len(x_selected)):
-                params_set[param_names[i]](config_sted, x_selected[i])
+
             stacks, _ = microscope.acquire(config_conf)
             conf1 = stacks[0][0]
-            stacks, _ = microscope.acquire(config_sted)
-            conf2 = stacks[0][0]
+            skio.imsave(os.path.join(save_folder, "conf1",str(no_trial), str(iter_idx)+".tiff"), conf1)
+            if split_sted_params is not None:
+                split_sted_params["config_conf"] = config_conf
+                split_sted_params["config_sted"] = config_sted
+                for i in range(len(x_selected)):
+                    split_sted_params[param_names[i]](config_sted, float(x_selected[i]))
+                sted_image, sted_stack, conf_stack = split_acquire.acquire(**split_sted_params)
+                skio.imsave(os.path.join(save_folder, "sted_stack",str(no_trial), str(iter_idx)+".tiff"), sted_stack)
+                skio.imsave(os.path.join(save_folder, "conf_stack",str(no_trial), str(iter_idx)+".tiff"), conf_stack)
+            else:
+                for i in range(len(x_selected)):
+                    params_set[param_names[i]](config_sted, float(x_selected[i]))
+                    print(f'------------------ Parameter {param_names[i]} set to {float(x_selected[i])}-----------')
+                stacks, _ = microscope.acquire(config_sted)
+                sted_image = stacks[0][0]
+            skio.imsave(os.path.join(save_folder, "sted",str(no_trial), str(iter_idx)+".tiff"), sted_image)
             stacks, _ = microscope.acquire(config_conf)
             conf2 = stacks[0][0]
+            skio.imsave(os.path.join(save_folder, "conf2",str(no_trial), str(iter_idx)+".tiff"), conf2)
 
 
 
