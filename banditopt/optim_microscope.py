@@ -1,7 +1,7 @@
 # TESTED ON THE ENVIRONMENT py3kclone2
 
 from shutil import copyfile
-from . import algorithms, objectives, user, utils, microscope
+from . import algorithms, objectives, user, utils, microscope, split_acquire
 
 from .algorithms import TS_sampler
 
@@ -101,7 +101,6 @@ def run_TS(config, save_folder="debug_trial", regressor_name="sklearn_BayesRidge
     im_dir_names = ["conf1", "sted", "conf2", "fluomap", "y_samples", "pareto_indexes"]
     if split_sted_params is not None:
         im_dir_names.append("sted_stack")
-        im_dir_names.append("conf_stack")
     for dir_name in im_dir_names:
         os.mkdir(os.path.join(save_folder, dir_name))
 
@@ -130,7 +129,7 @@ def run_TS(config, save_folder="debug_trial", regressor_name="sklearn_BayesRidge
         #     regions += user.get_regions(config=config_overview, overview_name='640 {0}')
 
         config_overview = microscope.get_config("Setting STED configuration.", 'overview_logo.png')
-        regions = user.get_regions(config=config_overview, overview_name='640 {0}')
+        regions = user.get_regions(config=config_overview, overview_name='640 {12}')
         regions.reverse()
 
         s_lb, s_ub, dts, dts_sampling, dts_update = [], [], [], [], []
@@ -198,10 +197,9 @@ def run_TS(config, save_folder="debug_trial", regressor_name="sklearn_BayesRidge
                 split_sted_params["config_conf"] = config_conf
                 split_sted_params["config_sted"] = config_sted
                 for i in range(len(x_selected)):
-                    split_sted_params[param_names[i]](config_sted, float(x_selected[i]))
-                sted_image, sted_stack, conf_stack = split_acquire.acquire(**split_sted_params)
+                    split_sted_params[param_names[i]] = float(x_selected[i])
+                sted_image, sted_stack = split_acquire.acquire(**split_sted_params)
                 skio.imsave(os.path.join(save_folder, "sted_stack",str(no_trial), str(iter_idx)+".tiff"), sted_stack)
-                skio.imsave(os.path.join(save_folder, "conf_stack",str(no_trial), str(iter_idx)+".tiff"), conf_stack)
             else:
                 for i in range(len(x_selected)):
                     params_set[param_names[i]](config_sted, float(x_selected[i]))

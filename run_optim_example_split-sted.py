@@ -1,11 +1,11 @@
-import src.optim_microscope as optim
+import banditopt.optim_microscope as optim
 import numpy as np
 
 #x_mins=[(4e-3)*2**-2, (1e-5)*2**-2]
 #x_maxs=[(4e-3)*2**2, (1e-5)*2**2]
 
 config =  dict(
-    save_folder="sted_deg4_microscope",
+    save_folder="split-sted_debug",
     regressor_name="sklearn_BayesRidge",
     regressor_args= {
         "default":{
@@ -50,8 +50,7 @@ config =  dict(
 #    borders = [(0,300), (0,1), (0,50)],
     borders = None,
     pareto_only = False,
-    param_space_bounds=None,
-    split_sted_params = {"p_ex":5, p_sted:6.5, nb_images:8, tau_exc:np.inf}
+    split_sted_params = {"p_ex":5, 'p_sted':6.5, 'nb_images':5, 'tau_exc':np.inf}
               )
 
 optim.run_TS(config=config, **config)

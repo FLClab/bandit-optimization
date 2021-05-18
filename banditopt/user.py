@@ -12,7 +12,7 @@ pyplot.ion()
 import skimage
 
 try:
-    import src.microscope as microscope
+    from . import microscope
 except:
     print("Could not load microscope interface. Some functions may not be available.")
 from . import utils
