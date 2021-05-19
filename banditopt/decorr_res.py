@@ -3,6 +3,9 @@ import numpy as np
 import pandas as pd
 
 from inspect import currentframe, getframeinfo
+import warnings
+
+
 
 
 def decorr_res(imname=None, image=None):
@@ -34,7 +37,9 @@ def decorr_res(imname=None, image=None):
 
     Ik = np.fft.fftshift(np.fft.fftn(np.fft.fftshift(image))) #Pourquoi utiliser fftshift 2 fois???
     Ik = Ik*(R<1) # ??? That was not in the "manual" ...
-    Ikn =  Ik/np.abs(Ik)
+    
+    with np.errstate(divide='ignore', invalid='ignore'):
+        Ikn =  Ik/np.abs(Ik)
     Ikn[np.isnan(Ikn)] = 0 #Nécessaire?
     Ikn[np.isinf(Ikn)] = 0 #Nécessaire?
 
@@ -72,9 +77,10 @@ def decorr_res(imname=None, image=None):
                 I2_abs_exp2 = Ikn_abs_exp2[Msk]
                 nom = nom + np.real(I1*I2_conj).sum()
                 denom1 = denom1 + np.sum(I2_abs_exp2)
-            d.append(
-            nom/np.sqrt(denom1*denom2)
-            )
+            with np.errstate(divide='ignore', invalid='ignore'):
+                d.append(
+                nom/np.sqrt(denom1*denom2)
+                )
             
         
         
