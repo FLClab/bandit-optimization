@@ -58,7 +58,7 @@ def acquire(p_ex, p_sted, nb_images, tau_exc, config_conf, config_sted):
 
 
     params_set = {"Dwelltime": microscope.set_dwelltime,
-                  "Exc/Power": functools.partial(microscope.set_power, laser_id=5),
+                  "Exc/Power": functools.partial(microscope.set_power, laser_id=3),
                   "STED/Power": functools.partial(microscope.set_power, laser_id=6),
                   "Line_Step": functools.partial(microscope.set_linestep, step_id=0),
                   "Rescue/Signal_Level": functools.partial(microscope.set_rescue_signal_level, channel_id=0),
@@ -73,6 +73,7 @@ def acquire(p_ex, p_sted, nb_images, tau_exc, config_conf, config_sted):
     Nb_images=config_sted_stack["Nb/Images"]
     # conf, _= microscope.acquire(config_conf
     # conf_stack.append(conf[-1][0])
+    params_set["Exc/Power"](config_sted, config_sted_stack["Exc/Power"])
     for jm1 in range(Nb_images):
 
         params_set["STED/Power"](config_sted, jm1*config_sted_stack["STED/Power"]/(Nb_images-1))
@@ -87,14 +88,14 @@ def acquire(p_ex, p_sted, nb_images, tau_exc, config_conf, config_sted):
     # conf_stack.append(conf[-1][0])
 
 
-    sted_stack = np.moveaxis(np.array(sted_stack), 0, -1)
+    sted_stack = np.array(sted_stack)
 
     #----------------------- SPLIT STED ---------------------------
 
 
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        Fin  = split_sted(sted_stack, config_split,  **config_split )
+        Fin  = split_sted(np.moveaxis(np.array(sted_stack), 0, -1), config_split,  **config_split )
     #Fin = split_sted(sted_stack, config_split,  **config_split, return_analysis_fig=False )
 
 

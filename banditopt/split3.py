@@ -7,6 +7,8 @@ from pandas.plotting import table
 import pandas as pd
 import json
 
+from skimage import filters
+
 import time
 
 import matplotlib
@@ -106,6 +108,13 @@ def split_sted(sted_stack_fname, params_dict, Nb_to_sum, smooth_factor, im_smoot
     modules_smoothed = np.sqrt(s**2+g**2)
     ##TODO: I would like to rename Ngat. What is the meaning, exactly?
     Ngat = sted_stack[:,:,Tg-1:N].sum(axis=2)
+
+    # TODO: VERIFY FIX
+    if len(np.unique(Ngat)) > 0:
+        foreground_threshold = filters.threshold_otsu(Ngat)
+    else:
+        foreground_threshold = -1
+
     modules_smoothed[Ngat < foreground_threshold]=0
     #TODO: modimg, ne?
     x = g_smoothed[np.logical_and(Ngat > foreground_threshold, modules_smoothed > 0)]
@@ -299,7 +308,7 @@ def main():
 #    split_image = split_sted(skio.imread("smul_im1_sources20nm_Isatdiv.tiff"), params_dict,  **params_dict, show_plots=True )
 #    split_image = split_sted(skio.imread("smul_im1_sources20nm_noise100.tiff"), params_dict,  **params_dict, show_plots=True )
     split_image = split_sted(skio.imread("26_STED10.0_Exc16.0.tiff"), params_dict,  **params_dict, show_plots=True )
-    
+
 #    split_image = split_sted(skio.imread("smul_im1_sources20nm_noise200_normalized.tiff"), params_dict,  **params_dict, show_plots=True )
 
 if __name__ == "__main__":
