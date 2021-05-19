@@ -103,7 +103,7 @@ class sklearn_BayesRidge(BayesianRidge):
             X = rescale_X(X, self.param_space_bounds)
         X = PolynomialFeatures(self.degree).fit_transform(X)[:,1:]
         mean, std = self.predict(X, return_std=True)
-        std = np.sqrt(std**2 - (1/self.alpha_))
+        # std = np.sqrt(std**2 - (1/self.alpha_))
         return mean, std
 
     def sample(self, X):
