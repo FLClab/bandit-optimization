@@ -93,7 +93,7 @@ class sklearn_BayesRidge(BayesianRidge):
         X = PolynomialFeatures(self.degree).fit_transform(X)[:,1:]
         self.fit(X,y.flatten())
 
-    def get_mean_std(self, X):
+    def get_mean_std(self, X, return_withnoise=False):
         """Predict mean and standard deviation at given points *X*.
 
         :param : A 2d array of locations at which to predict.
@@ -102,9 +102,13 @@ class sklearn_BayesRidge(BayesianRidge):
         if self.param_space_bounds is not None:
             X = rescale_X(X, self.param_space_bounds)
         X = PolynomialFeatures(self.degree).fit_transform(X)[:,1:]
-        mean, std = self.predict(X, return_std=True)
-        # std = np.sqrt(std**2 - (1/self.alpha_))
-        return mean, std
+        mean, std_withnoise = self.predict(X, return_std=True)
+        std = np.sqrt(std_withnoise**2 - (1/self.alpha_))
+        if return_withnoise:
+            return mean, std, std_withnoise
+        else:
+            return mean, std
+        
 
     def sample(self, X):
         """Sample a function evaluated at points *X*.
