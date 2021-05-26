@@ -10,8 +10,10 @@ import itertools
 import warnings
 
 from statsmodels.tsa.stattools import acf
-
+from scipy.ndimage import gaussian_filter
+from scipy import optimize
 from skimage.transform import resize
+from sklearn.metrics import mean_squared_error
 
 #import fsc
 # import src.utils as utils
@@ -262,3 +264,68 @@ class Resolution(Objective):
         if res > self.res_cap:
             res = self.res_cap
         return res
+
+class Squirrel(Objective):
+    """
+    Implements the `Squirrel` objective
+
+    :param method: A `str` of the method used to optimize
+    :param normalize: A `bool` wheter to normalize the images
+    """
+    def __init__(self, method="L-BFGS-B", normalize=False):
+
+        self.method = method
+        self.bounds = (-numpy.inf, numpy.inf), (-numpy.inf, numpy.inf), (0, numpy.inf)
+        self.x0 = (1, 0, 1)
+        self.normalize = normalize
+        self.select_optimal = numpy.argmin
+
+    def evaluate(self, sted_stack, confocal_init, confocal_end, sted_fg, confocal_fg):
+        """
+        Evaluates the objective
+
+        :param sted_stack: A list of STED images.
+        :param confocal_init: A confocal image acquired before the STED stack.
+        :param concofal_end: A confocal image acquired after the STED stack.
+        :param sted_fg: A background mask of the first STED image in the stack
+                        (2d array of bool: True on foreground, False on background).
+        :param confocal_fg: A background mask of the initial confocal image
+                            (2d array of bool: True on foreground, False on background).
+        """
+        # Optimize
+        result = self.optimize(sted_stack[0], confocal_init)
+        return self.squirrel(result.x, sted_stack[0], confocal_init)
+
+    def squirrel(self, x, *args):
+        """
+        Computes the reconstruction error between
+        """
+        alpha, beta, sigma = x
+        super_resolution, reference = args
+        convolved = self.convolve(super_resolution, alpha, beta, sigma)
+        if self.normalize:
+            reference = (reference - reference.min()) / (reference.max() - reference.min() + 1e-9)
+            convolved = (convolved - convolved.min()) / (convolved.max() - convolved.min() + 1e-9)
+        error = mean_squared_error(reference, convolved, squared=False)
+        return error
+
+    def optimize(self, super_resolution, reference):
+        """
+        Optimizes the SQUIRREL parameters
+
+        :param super_resolution: A `numpy.ndarray` of the super-resolution image
+        :param reference: A `numpy.ndarray` of the reference image
+
+        :returns : An `OptimizedResult`
+        """
+        result = optimize.minimize(
+            self.squirrel, self.x0, args=(super_resolution, reference),
+            method="L-BFGS-B", bounds=((-numpy.inf, numpy.inf), (-numpy.inf, numpy.inf), (0, numpy.inf))
+        )
+        return result
+
+    def convolve(self, img, alpha, beta, sigma):
+        """
+        Convolves an image with the given parameters
+        """
+        return gaussian_filter(img * alpha + beta, sigma=sigma)
