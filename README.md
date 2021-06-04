@@ -14,3 +14,6 @@ python -m pip install -e audurand_pysted
 ```
 conda install -c conda-forge tifffile 
 ```
+
+### deap:
+pip install deap
