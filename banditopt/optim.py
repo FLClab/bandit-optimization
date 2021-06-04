@@ -105,7 +105,8 @@ def run_TS(config, save_folder="debug_trial", regressor_name="sklearn_BayesRidge
                         points_arr2d = np.concatenate([y_samples[i] if obj_dict[obj_names[i]].select_optimal==np.argmax else -y_samples[i] for i in range(len(obj_names))]+[-timesperpixel[:,np.newaxis]], axis=1)
                     else:
                         points_arr2d = np.concatenate([y_samples[i] if obj_dict[obj_names[i]].select_optimal==np.argmax else -y_samples[i] for i in range(len(obj_names))], axis=1)
-                    ndf, dl, dc, ndr = pygmo.fast_non_dominated_sorting(points=points_arr2d)
+#                    ndf, dl, dc, ndr = pygmo.fast_non_dominated_sorting(points=points_arr2d)
+                    ndf = utils.pareto_front(points=points_arr2d)
                     np.savetxt(os.path.join(save_folder, "pareto_indexes",str(no_trial), str(iter_idx)+".csv"), ndf[0], delimiter=",")
                     X_sample = X[ndf[0],:]
                     y_samples = [y[ndf[0]] for y in y_samples]

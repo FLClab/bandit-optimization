@@ -13,6 +13,11 @@ from scipy.spatial.distance import cdist
 
 from skimage import filters
 
+import deap
+from deap import base
+from deap import creator
+from deap import tools
+
 
 def avg_area(img, radius, point):
     """Compute the average of the area defined by a *radius* around a given
@@ -216,3 +221,25 @@ def img2float(img):
         return rescale(img, float(2**7-1), -float(2**7))
     else:
         raise TypeError
+
+
+def pareto_front(points):
+    """
+    this function returns indexes of the pareto front of a minimization problem
+    parameters:
+        points   2D array of point with as many columns as objectives
+    """
+    if "FitnessMult" in dir(creator):
+        del creator.FitnessMult
+    if "Individual" in dir(creator):
+        del creator.Individual
+    creator.create("FitnessMult", base.Fitness, weights=tuple([-1.]*points.shape[1]))
+    creator.create("Individual", list, fitness=creator.FitnessMult)
+    points_list = points.tolist()
+    for i in range(len(points_list)):
+        points_list[i] = deap.creator.Individual(points_list[i])
+        points_list[i].fitness.values = tuple(points_list[i])
+        points_list[i].id = i
+    individuals = tools.sortLogNondominated(points_list, k=len(points_list), first_front_only=True)
+#     front = np.array(individuals)
+    return [x.id for x in individuals]
