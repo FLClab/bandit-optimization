@@ -205,7 +205,7 @@ def get_regions(at_least_n=1, config=None, overview_name=None):
     regions_offset = [(x + x_offset, y + y_offset) for (x, y) in regions]
     return regions_offset
 
-def select(thetas, objectives, with_time, times, figsize=(10, 10), borders=None):
+def select(thetas, objectives, with_time, times, figsize=(10, 10), borders=None, **kwargs):
     """Asks the user to select the best option by clicking on the points from the
     :mod:`matplotlib` figure. If several points overlap, select the one that minimizes
     the time (or third objective).
@@ -242,9 +242,9 @@ def select(thetas, objectives, with_time, times, figsize=(10, 10), borders=None)
         time_range = times.max() - times.min() + 1e-11
     if len(thetas)==3:
         if with_time:
-            sc = ax.scatter(thetas[0], thetas[1], s=(times-times.min())/time_range * 60 + 20, c=thetas[2], marker="o", alpha=0.5, picker=3, cmap=cmap)
+            sc = ax.scatter(thetas[0], thetas[1], s=(times-times.min())/time_range * 60 + 20, c=thetas[2], marker="o", alpha=0.5, picker=3, cmap=cmap, **kwargs)
         else:
-            sc = ax.scatter(thetas[0], thetas[1], c=thetas[2], marker="o", alpha=0.5, picker=3, cmap=cmap)
+            sc = ax.scatter(thetas[0], thetas[1], c=thetas[2], marker="o", alpha=0.5, picker=3, cmap=cmap, **kwargs)
         pyplot.colorbar(sc, ax=ax)
     elif len(thetas)==2:
         if with_time:
