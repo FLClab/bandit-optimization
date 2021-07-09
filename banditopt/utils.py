@@ -223,26 +223,26 @@ def img2float(img):
         raise TypeError
 
 
-# def pareto_front(points):
-#     """
-#     this function returns indexes of the pareto front of a minimization problem
-#     parameters:
-#         points   2D array of point with as many columns as objectives
-#     """
-#     if "FitnessMult" in dir(creator):
-#         del creator.FitnessMult
-#     if "Individual" in dir(creator):
-#         del creator.Individual
-#     creator.create("FitnessMult", base.Fitness, weights=tuple([-1.]*points.shape[1]))
-#     creator.create("Individual", list, fitness=creator.FitnessMult)
-#     points_list = points.tolist()
-#     for i in range(len(points_list)):
-#         points_list[i] = deap.creator.Individual(points_list[i])
-#         points_list[i].fitness.values = tuple(points_list[i])
-#         points_list[i].id = i
-#     individuals = tools.sortLogNondominated(points_list, k=len(points_list), first_front_only=True)
-# #     front = np.array(individuals)
-#     return [x.id for x in individuals]
+def pareto_front(points):
+    """
+    this function returns indexes of the pareto front of a minimization problem
+    parameters:
+        points   2D array of point with as many columns as objectives
+    """
+    if "FitnessMult" in dir(creator):
+        del creator.FitnessMult
+    if "Individual" in dir(creator):
+        del creator.Individual
+    creator.create("FitnessMult", base.Fitness, weights=tuple([-1.]*points.shape[1]))
+    creator.create("Individual", list, fitness=creator.FitnessMult)
+    points_list = points.tolist()
+    for i in range(len(points_list)):
+        points_list[i] = deap.creator.Individual(points_list[i])
+        points_list[i].fitness.values = tuple(points_list[i])
+        points_list[i].id = i
+    individuals = tools.sortLogNondominated(points_list, k=len(points_list), first_front_only=True)
+#     front = np.array(individuals)
+    return [x.id for x in individuals]
 
 # def pareto_front(points, discretization=100):
 #     """
@@ -334,28 +334,3 @@ def img2float(img):
 #     # We apply the unique operation to ensure that no points are
 #     # present multiple time
 #     return numpy.unique(return_indices)
-
-def pareto_front(points, return_mask = True):
-    """
-    Find the pareto-efficient points
-    :param points: An (n_points, n_points) array
-    :param return_mask: True to return a mask
-    :return: An array of indices of pareto-efficient points.
-        If return_mask is True, this will be an (n_points, ) boolean array
-        Otherwise it will be a (n_efficient_points, ) integer array of indices.
-    """
-    is_efficient = numpy.arange(points.shape[0])
-    n_points = points.shape[0]
-    next_point_index = 0  # Next index in the is_efficient array to search for
-    while next_point_index<len(points):
-        nondominated_point_mask = numpy.any(points<points[next_point_index], axis=1)
-        nondominated_point_mask[next_point_index] = True
-        is_efficient = is_efficient[nondominated_point_mask]  # Remove dominated points
-        points = points[nondominated_point_mask]
-        next_point_index = numpy.sum(nondominated_point_mask[:next_point_index])+1
-    if return_mask:
-        is_efficient_mask = numpy.zeros(n_points, dtype = bool)
-        is_efficient_mask[is_efficient] = True
-        return numpy.argwhere(is_efficient_mask).ravel()
-    else:
-        return is_efficient
