@@ -244,93 +244,118 @@ def img2float(img):
 # #     front = np.array(individuals)
 #     return [x.id for x in individuals]
 
-def pareto_front(points, discretization=100):
+# def pareto_front(points, discretization=100):
+#     """
+#     Implements a Pareto grid search over all points.
+#
+#     This method is very efficient in terms of calculation. To save
+#     a significant amount of time we separate the distribution of points
+#     in specific cuboids.
+#     The pareto front calculation is performed on the position of the
+#     cuboids in the input space instead of all points separately. This
+#     allows to reduce the number of points during the pareto calculation.
+#     We then extract the points from each cuboids which are the points
+#     returned by this method.
+#
+#     :param points: A `numpy.ndarray` of points with shape (N, D)
+#     :param discretization: An `int` of the number of grids to use (default : 100)
+#
+#     :returns : A `numpy.ndarray` of optimal points with shape (N, D)
+#     """
+#     def nondominated(points):
+#         """
+#         Calculates the indices of the pareto front for a minimization problem
+#
+#         :param points: A `numpy.ndarray` of points
+#
+#         :returns : A `numpy.ndarray` of selected indices
+#         """
+#         if "FitnessMult" in dir(creator):
+#             del creator.FitnessMult
+#         if "Individual" in dir(creator):
+#             del creator.Individual
+#         creator.create("FitnessMult", base.Fitness, weights=tuple([-1.]*points.shape[1]))
+#         creator.create("Individual", list, fitness=creator.FitnessMult)
+#         points_list = points.tolist()
+#         for i in range(len(points_list)):
+#             points_list[i] = deap.creator.Individual(points_list[i])
+#             points_list[i].fitness.values = tuple(points_list[i])
+#             points_list[i].id = i
+#         individuals = tools.sortLogNondominated(points_list, k=len(points_list), first_front_only=True)
+#         return numpy.array([x.id for x in individuals])
+#
+#     ndim = points.shape[-1]
+#     if ndim < 2:
+#         return numpy.min(points)
+#
+#     # Retrieves the index of the hypervolume histogram
+#     indices, _bins = [], []
+#     for pts in points.T:
+#         bins = numpy.linspace(pts.min(), pts.max(), discretization)
+#         ind = numpy.digitize(pts, bins)
+#         indices.append(ind)
+#         _bins.append(bins)
+#     # Merges all indices in the hypervolume
+#     indices = numpy.array(indices).T
+#     bins = numpy.array(_bins)
+#
+#     # We create the hypervolume of where points are contained
+#     # We add a value of 2 since points may be out of bounds in digitize
+#     ary = numpy.zeros([discretization + 2] * ndim, dtype=bool)
+#     # Indexing the array this way is very fast
+#     ary[tuple([indices[:, i] for i in range(ndim)])] = True
+#     # We remove the extra pad on the array
+#     ary = ary[tuple([slice(1, -1) for _ in range(ndim)])]
+#     # We return where the array contains points
+#     where = numpy.argwhere(ary)
+#
+#     # Gets the value of each histogram bins which forms the pareto points
+#     pareto_points = []
+#     for i in range(ndim):
+#         pareto_points.append(bins[i, where[:, i]])
+#     pareto_points = numpy.array(pareto_points).T
+#
+#     # Calculate the pareto front from the created cells
+#     # In this case the pareto points refer to the specific cells
+#     pareto_points = nondominated(pareto_points)
+#
+#     # Recovers the indices of the cells
+#     cells = where[pareto_points]
+#
+#     # We recover the points contained within each of the pareto
+#     # cells
+#     return_indices = []
+#     for cell in cells:
+#         # We add 1 to the cell ID since digitize returns 1 for the
+#         # first cell and 0 for out of bounds data
+#         where = numpy.prod(indices == (cell + 1), axis=-1)
+#         if numpy.any(where):
+#             return_indices.extend(numpy.argwhere(where).ravel())
+#     # We apply the unique operation to ensure that no points are
+#     # present multiple time
+#     return numpy.unique(return_indices)
+
+def pareto_front(points, return_mask = True):
     """
-    Implements a Pareto grid search over all points.
-
-    This method is very efficient in terms of calculation. To save
-    a significant amount of time we separate the distribution of points
-    in specific cuboids.
-    The pareto front calculation is performed on the position of the
-    cuboids in the input space instead of all points separately. This
-    allows to reduce the number of points during the pareto calculation.
-    We then extract the points from each cuboids which are the points
-    returned by this method.
-
-    :param points: A `numpy.ndarray` of points with shape (N, D)
-    :param discretization: An `int` of the number of grids to use (default : 100)
-
-    :returns : A `numpy.ndarray` of optimal points with shape (N, D)
+    Find the pareto-efficient points
+    :param points: An (n_points, n_points) array
+    :param return_mask: True to return a mask
+    :return: An array of indices of pareto-efficient points.
+        If return_mask is True, this will be an (n_points, ) boolean array
+        Otherwise it will be a (n_efficient_points, ) integer array of indices.
     """
-    def nondominated(points):
-        """
-        Calculates the indices of the pareto front for a minimization problem
-
-        :param points: A `numpy.ndarray` of points
-
-        :returns : A `numpy.ndarray` of selected indices
-        """
-        if "FitnessMult" in dir(creator):
-            del creator.FitnessMult
-        if "Individual" in dir(creator):
-            del creator.Individual
-        creator.create("FitnessMult", base.Fitness, weights=tuple([-1.]*points.shape[1]))
-        creator.create("Individual", list, fitness=creator.FitnessMult)
-        points_list = points.tolist()
-        for i in range(len(points_list)):
-            points_list[i] = deap.creator.Individual(points_list[i])
-            points_list[i].fitness.values = tuple(points_list[i])
-            points_list[i].id = i
-        individuals = tools.sortLogNondominated(points_list, k=len(points_list), first_front_only=True)
-        return numpy.array([x.id for x in individuals])
-
-    ndim = points.shape[-1]
-    if ndim < 2:
-        return numpy.min(points)
-
-    # Retrieves the index of the hypervolume histogram
-    indices, _bins = [], []
-    for pts in points.T:
-        bins = numpy.linspace(pts.min(), pts.max(), discretization)
-        ind = numpy.digitize(pts, bins)
-        indices.append(ind)
-        _bins.append(bins)
-    # Merges all indices in the hypervolume
-    indices = numpy.array(indices).T
-    bins = numpy.array(_bins)
-
-    # We create the hypervolume of where points are contained
-    # We add a value of 2 since points may be out of bounds in digitize
-    ary = numpy.zeros([discretization + 2] * ndim, dtype=bool)
-    # Indexing the array this way is very fast
-    ary[tuple([indices[:, i] for i in range(ndim)])] = True
-    # We remove the extra pad on the array
-    ary = ary[tuple([slice(1, -1) for _ in range(ndim)])]
-    # We return where the array contains points
-    where = numpy.argwhere(ary)
-
-    # Gets the value of each histogram bins which forms the pareto points
-    pareto_points = []
-    for i in range(ndim):
-        pareto_points.append(bins[i, where[:, i]])
-    pareto_points = numpy.array(pareto_points).T
-
-    # Calculate the pareto front from the created cells
-    # In this case the pareto points refer to the specific cells
-    pareto_points = nondominated(pareto_points)
-
-    # Recovers the indices of the cells
-    cells = where[pareto_points]
-
-    # We recover the points contained within each of the pareto
-    # cells
-    return_indices = []
-    for cell in cells:
-        # We add 1 to the cell ID since digitize returns 1 for the
-        # first cell and 0 for out of bounds data
-        where = numpy.prod(indices == (cell + 1), axis=-1)
-        if numpy.any(where):
-            return_indices.extend(numpy.argwhere(where).ravel())
-    # We apply the unique operation to ensure that no points are
-    # present multiple time
-    return numpy.unique(return_indices)
+    is_efficient = numpy.arange(points.shape[0])
+    n_points = points.shape[0]
+    next_point_index = 0  # Next index in the is_efficient array to search for
+    while next_point_index<len(points):
+        nondominated_point_mask = numpy.any(points<points[next_point_index], axis=1)
+        nondominated_point_mask[next_point_index] = True
+        is_efficient = is_efficient[nondominated_point_mask]  # Remove dominated points
+        points = points[nondominated_point_mask]
+        next_point_index = numpy.sum(nondominated_point_mask[:next_point_index])+1
+    if return_mask:
+        is_efficient_mask = numpy.zeros(n_points, dtype = bool)
+        is_efficient_mask[is_efficient] = True
+        return numpy.argwhere(is_efficient_mask).ravel()
+    else:
+        return is_efficient
