@@ -205,7 +205,7 @@ def get_regions(at_least_n=1, config=None, overview_name=None):
     regions_offset = [(x + x_offset, y + y_offset) for (x, y) in regions]
     return regions_offset
 
-def select(thetas, objectives, with_time, times, figsize=(10, 10), borders=None, **kwargs):
+def select(thetas, objectives, with_time, times, figsize=(10, 10), borders=None, cmap=None, **kwargs):
     """Asks the user to select the best option by clicking on the points from the
     :mod:`matplotlib` figure. If several points overlap, select the one that minimizes
     the time (or third objective).
@@ -230,7 +230,8 @@ def select(thetas, objectives, with_time, times, figsize=(10, 10), borders=None,
 
     # set to your favorite colormap (see https://matplotlib.org/users/colormaps.html)
 #    cmap = pyplot.cm.get_cmap("nipy_spectral")
-    cmap = pyplot.cm.get_cmap("cividis")
+    if isinstance(cmap, type(None)):
+        cmap = pyplot.cm.get_cmap("cividis")
 
     if with_time:
         title = ax.set_title(f"Pick the best option by clicking on the point. Tmin={numpy.min(times)}, Tmax={numpy.max(times)}")
