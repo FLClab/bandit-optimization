@@ -22,7 +22,8 @@ regressors_dict = {"sklearn_BayesRidge":algorithms.sklearn_BayesRidge,
                    "sklearn_GP":algorithms.sklearn_GP,
 }
 
-def run_TS(config, save_folder="debug_trial", regressor_name="sklearn_BayesRidge", regressor_args= {"default":{}, "SNR":{}, "bleach":{}}, n_divs_default = 25, param_names = ["p_ex", "p_sted"], with_time=True, default_values_dict={"dwelltime":20e-6},params_conf = { 'p_ex':100e-6, 'p_sted':0, 'dwelltime':10.0e-6,}, x_mins=[400e-6*2**-3, 900e-6*2**-3, ], x_maxs=[400e-6*2**4, 900e-6*2**4], obj_names=["SNR", "bleach"], optim_length = 30, nbre_trials = 2, pareto_only=True, borders=None):
+
+def run_TS(config, save_folder="debug_trial", regressor_name="sklearn_BayesRidge", regressor_args= {"default":{}, "SNR":{}, "bleach":{}}, n_divs_default = 25, param_names = ["p_ex", "p_sted"], with_time=True, default_values_dict={"dwelltime":20e-6},params_conf = { 'p_ex':100e-6, 'p_sted':0, 'dwelltime':10.0e-6,}, x_mins=[400e-6*2**-3, 900e-6*2**-3, ], x_maxs=[400e-6*2**4, 900e-6*2**4], obj_names=["SNR", "bleach"], optim_length = 30, nbre_trials = 2, pareto_option='nsga', borders=None, NSGAII_kwargs=None):
     """This function does multi-objective Thompson sampling optimization of parameters of simulated STED images.
 
     :param config: Dictionary of all the function parameters to be saved as a yaml file
@@ -39,6 +40,7 @@ def run_TS(config, save_folder="debug_trial", regressor_name="sklearn_BayesRidge
     :obj_names: Name (str key of a dictionary) of objectives
     :optim_length: Number of iterations of an optimization
     :nbre_trials: Number of trials
+    :pareto_option: None if no pareto filtering, 'grid' if grid sort, 'nsga' if NSGA-II
     :borders: None, or List of tuples (minval, maxval) to cap the objective values in the visualization
               for tradeoff selection
     """
@@ -57,7 +59,7 @@ def run_TS(config, save_folder="debug_trial", regressor_name="sklearn_BayesRidge
     copyfile(f"{root}/algorithms.py", os.path.join(save_folder,"algorithms.py"))
     with open(os.path.join(save_folder, "config.yml"), 'w') as f:
         yaml.dump(config, f)
-    im_dir_names = ("conf1", "sted", "conf2", "fluomap", "y_samples", "pareto_indexes")
+    im_dir_names = ("conf1", "sted", "conf2", "fluomap","X_sample", "y_samples", "pareto_indexes")
     for dir_name in im_dir_names:
         os.mkdir(os.path.join(save_folder, dir_name))
 
@@ -74,46 +76,77 @@ def run_TS(config, save_folder="debug_trial", regressor_name="sklearn_BayesRidge
                 args[key] = value
             algos.append(TS_sampler(regressors_dict[regressor_name](**args)))
         # Define the parameter values to predict
-        grids = np.meshgrid(*[np.linspace(x_mins[i], x_maxs[i], n_points[i]) for i in range(ndims)])
-        X = np.hstack([grid.ravel()[:,np.newaxis] for grid in grids])
+        if pareto_option != 'nsga':
+            grids = np.meshgrid(*[np.linspace(x_mins[i], x_maxs[i], n_points[i]) for i in range(ndims)])
+            X = np.hstack([grid.ravel()[:,np.newaxis] for grid in grids])
 
         s_lb, s_ub, dts, dts_sampling, dts_update = [], [], [], [], []
         for iter_idx in range(optim_length):
 #             print(f"    iter {i}...")
             # Sample objective values over the parameter space
             t0 = time.time()
-            y_samples = [algo.sample(X) for algo in algos]
-            np.savetxt(os.path.join(save_folder, "y_samples",str(no_trial), str(iter_idx)+".csv"), np.dstack(y_samples).squeeze(), delimiter=",")
+            
+            if pareto_option != 'nsga':
+                y_samples = [algo.sample(X) for algo in algos]
+                np.savetxt(os.path.join(save_folder, "y_samples",str(no_trial), str(iter_idx)+".csv"), np.dstack(y_samples).squeeze(), delimiter=",")
 
-
-
-            dt_sampling = time.time()-t0
-            if "dwelltime" not in param_names:
-                timesperpixel = np.ones((X.shape[0], 1)) * default_values_dict["dwelltime"] #* default_values_dict["pixelsize"] * (default_values_dict[im_size_nm]*1e-9)**2/default_values_dict[pixelsize]**2
-                timesperpixel = timesperpixel.flatten()
-            else:
-                col = param_names.index("dwelltime")
-                timesperpixel = X[:,col] #* default_values_dict["pixelsize"] #* (default_values_dict[im_size_nm]*1e-9)**2/default_values_dict[pixelsize]**2w
-
-            # Select a point
-            if iter_idx==0:
-                x_selected = X[np.random.randint(X.shape[0])][:, np.newaxis]
-            else:
-                if pareto_only:
-                    # Select a pareto optimal point
-                    if with_time:
-                        points_arr2d = np.concatenate([y_samples[i] if obj_dict[obj_names[i]].select_optimal==np.argmax else -y_samples[i] for i in range(len(obj_names))]+[-timesperpixel[:,np.newaxis]], axis=1)
-                    else:
-                        points_arr2d = np.concatenate([y_samples[i] if obj_dict[obj_names[i]].select_optimal==np.argmax else -y_samples[i] for i in range(len(obj_names))], axis=1)
-#                    ndf, dl, dc, ndr = pygmo.fast_non_dominated_sorting(points=points_arr2d)
-                    ndf = utils.pareto_front(points=points_arr2d)
-                    np.savetxt(os.path.join(save_folder, "pareto_indexes",str(no_trial), str(iter_idx)+".csv"), ndf[0], delimiter=",")
-                    X_sample = X[ndf[0],:]
-                    y_samples = [y[ndf[0]] for y in y_samples]
-                    timesperpixel = timesperpixel[ndf[0]]
-                    x_selected = X_sample[user.select(y_samples, [obj_dict[name] for name in obj_names], with_time, timesperpixel, borders=borders), :][:,np.newaxis]
+                dt_sampling = time.time()-t0
+                if "dwelltime" not in param_names:
+                    timesperpixel = np.ones((X.shape[0], 1)) * default_values_dict["dwelltime"] #* default_values_dict["pixelsize"] * (default_values_dict[im_size_nm]*1e-9)**2/default_values_dict[pixelsize]**2
+                    timesperpixel = timesperpixel.flatten()
                 else:
-                    x_selected = X[user.select(y_samples, [obj_dict[name] for name in obj_names], with_time, timesperpixel, borders=borders), :][:,np.newaxis]
+                    col = param_names.index("dwelltime")
+                    timesperpixel = X[:,col] #* default_values_dict["pixelsize"] #* (default_values_dict[im_size_nm]*1e-9)**2/default_values_dict[pixelsize]**2w
+
+                # Select a point
+                if iter_idx==0:
+                    x_selected = X[np.random.randint(X.shape[0])][:, np.newaxis]
+                else:
+                    if pareto_option == 'grid':
+                        # Select a pareto optimal point
+                        if with_time:
+                            points_arr2d = np.concatenate([y_samples[i] if obj_dict[obj_names[i]].select_optimal==np.argmax else -y_samples[i] for i in range(len(obj_names))]+[-timesperpixel[:,np.newaxis]], axis=1)
+                        else:
+                            points_arr2d = np.concatenate([y_samples[i] if obj_dict[obj_names[i]].select_optimal==np.argmax else -y_samples[i] for i in range(len(obj_names))], axis=1)
+    #                    ndf, dl, dc, ndr = pygmo.fast_non_dominated_sorting(points=points_arr2d)
+                        ndf = utils.pareto_front(points=points_arr2d)
+                        np.savetxt(os.path.join(save_folder, "pareto_indexes",str(no_trial), str(iter_idx)+".csv"), ndf, delimiter=",")
+                        X_sample = X[ndf,:]
+                        y_samples = [y[ndf] for y in y_samples]
+                        timesperpixel = timesperpixel[ndf[0]]
+                        x_selected = X_sample[user.select(y_samples, [obj_dict[name] for name in obj_names], with_time, timesperpixel, borders=borders), :][:,np.newaxis]
+                    else:
+                        x_selected = X[user.select(y_samples, [obj_dict[name] for name in obj_names], with_time, timesperpixel, borders=borders), :][:,np.newaxis]
+            elif pareto_option == 'nsga':
+                # Select a point
+                if iter_idx==0:
+                    x_selected = np.random.uniform(x_mins, x_maxs)[:, np.newaxis]
+                    dt_sampling = 0
+                else:
+                    sampled_MO_function = algorithms.MO_function_sample(algos, with_time, param_names).evaluate
+                    nsga_weigts = [-1 if obj_dict[obj_name]==np.argmin else +1  for obj_name in obj_names]
+                    if with_time:
+                        nsga_weigts += [-1]
+                    print("Calculating the pareto front with NSGA-II...")
+                    t0_nsga = time.time()
+                    X_sample, logbook, ngens = utils.NSGAII(sampled_MO_function, x_mins, x_maxs, nsga_weigts, **NSGAII_kwargs)
+                    dt_sampling = time.time()-t0
+                    print(f"The pareto front was calculated in {dt_sampling:.2} seconds with {ngens} generations")
+                    y_samples = [algo.sample(X_sample) for algo in algos]
+                    if with_time:
+                        dwelltime_pos = list(X[0,:].flatten()).index('dwelltime')
+                        timesperpixel = X_sample[:, dwelltime_pos]
+                    else:
+                        timesperpixel = np.ones((X_sample.shape[0], 1))
+                    x_selected = X_sample[user.select(y_samples, [obj_dict[name] for name in obj_names], with_time, timesperpixel, borders=borders), :][:,np.newaxis]
+
+                    np.savetxt(os.path.join(save_folder, "X_sample",str(no_trial), str(iter_idx)+".csv"), X_sample, delimiter=",")
+                    np.savetxt(os.path.join(save_folder, "y_samples",str(no_trial), str(iter_idx)+".csv"), np.dstack(y_samples).squeeze(), delimiter=",")
+                
+            else:
+                raise ValueError(f"The pareto_option {pareto_option} does not exists")
+            
+
             print("x_selected=", x_selected)
 
             # Acquire conf1, sted_image, conf2
@@ -173,7 +206,8 @@ def run_TS(config, save_folder="debug_trial", regressor_name="sklearn_BayesRidge
 #            s_ub.append(algo.s_ub)
 
             # Save data to text files
-            np.savetxt(os.path.join(save_folder,f'X_{no_trial}.csv'), algos[0].X, delimiter=",")
+            if pareto_option != 'nsga':
+                np.savetxt(os.path.join(save_folder,f'X_{no_trial}.csv'), algos[0].X, delimiter=",")
             y_array = np.hstack([algos[i].y[:,np.newaxis] for i in range(len(obj_names))])
             np.savetxt(os.path.join(save_folder,f'y_{no_trial}.csv'), y_array, delimiter=",")
     #        np.savetxt(os.path.join(save_folder,f's_lb_{no_trial}.csv'), np.array(s_lb), delimiter=",")
