@@ -17,6 +17,35 @@ import copy
 
 from inspect import currentframe, getframeinfo
 
+
+class MO_function_sample():
+    """
+    This class creates a function sample with randomly generated random seeds
+    
+    algos: list of TS_sampler objects
+    with_time: Optimize the (dell)time also
+    param_names: list of parameters to optimize
+    
+    individual: an array like object with parameter values
+    """
+    def __init__(self, algos, with_time, param_names):
+        self.seeds = [np.random.randint(2**32-1) for i in range(len(algos))]
+        self.algos = algos
+        self.with_time = with_time
+        self.param_names = param_names
+    def evaluate(self, individual):
+        X = np.array(individual)[np.newaxis, :]
+        ys=[]
+#                        for i in range(len(self.algos)):
+#                            import pdb; pdb.set_trace()
+#                            ys.append(float(algos[i].sample(X, seed=self.seeds[i])))
+        ys = [float(self.algos[i].sample(X, seed=self.seeds[i])) for i in range(len(self.algos))]
+        if self.with_time:
+            dwelltime_pos = list(X.flatten()).index('dwelltime')
+            return tuple(ys + X[dwelltime_pos])
+        else:
+            return tuple(ys)
+
 def rescale_X(X, param_space_bounds):
     X = copy.deepcopy(X)
     for col in range(X.shape[1]):
@@ -110,7 +139,7 @@ class sklearn_BayesRidge(BayesianRidge):
             return mean, std
         
 
-    def sample(self, X):
+    def sample(self, X, seed=None):
         """Sample a function evaluated at points *X*.
 
         :param X: A 2d array locations at which to evaluate the sampled function.
@@ -121,9 +150,14 @@ class sklearn_BayesRidge(BayesianRidge):
         rng = np.random.default_rng()
 #        weigths = self.coef_
 #        weigths[0] = self.intercept_
-        w_sample = np.random.multivariate_normal(self.coef_, self.sigma_)
+        if seed is not None:
+            w_sample = np.random.default_rng(seed).multivariate_normal(self.coef_, self.sigma_)
+        else:
+            w_sample = np.random.default_rng().multivariate_normal(self.coef_, self.sigma_)
         X = PolynomialFeatures(self.degree).fit_transform(X)[:,1:]
         return X@w_sample[:,np.newaxis] + self.intercept_
+
+        
 
 
 class TS_sampler():
@@ -151,7 +185,7 @@ class TS_sampler():
             std = np.full(X_pred.shape[0], 1)
             return mean, std
 
-    def sample(self, X_sample):
+    def sample(self, X_sample, seed=None):
         """Sample a function evaluated at points *X_sample*. When no points have
         been observed yet, the function values are sampled uniformly between 0 and 1.
 
@@ -159,7 +193,7 @@ class TS_sampler():
         :returns: A 1-D array of the pointwise evaluation of a sampled function.
         """
         if self.X is not None:
-            return self.regressor.sample(X_sample)
+                return self.regressor.sample(X_sample, seed)
         else:
 #             mean= np.full(X_sample.shape[0], 0)
 #             cov = np.identity(X_sample.shape[0])

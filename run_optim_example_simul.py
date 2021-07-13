@@ -1,4 +1,7 @@
 from banditopt import optim
+import numpy as np
+
+obj_names =   ["Resolution", "Bleach", "SNR", ]
 
 config =  dict(
     save_folder="debug_trialX_weight_prior2",
@@ -16,9 +19,9 @@ config =  dict(
             "lambda_init": 1.4595412992911199,
             "tol": 1.0e-06,
         },
-        "SNR":{"alpha_init":1./0.5**2, "lambda_init":1/(2*15)**2, "alpha_2": 5000/(1./0.5**2), "lambda_2": 5000./(1/(2*15)**2),},
-        "Bleach":{"alpha_init":1./0.06**2, "lambda_init":1/(2)**2, "alpha_2": 5000/(1./0.03**2), "lambda_2": 5000./(1/(2)**2),},
-        "Resolution":{"alpha_init":1./3.**2, "lambda_init":1/(2*100)**2, "alpha_2": 5000./(1/3**2), "lambda_2": 5000./(1/(2*100)**2),},
+        "SNR":{"alpha_init":1./0.5**2, "lambda_init":1/(2*15)**2, "alpha_2": 1e-6, "lambda_2": 1e-6,},
+        "Bleach":{"alpha_init":1./0.06**2, "lambda_init":1/(2)**2, "alpha_2": 1e-6, "lambda_2": 1e-6,},
+        "Resolution":{"alpha_init":1./3.**2, "lambda_init":1/(2*100)**2, "alpha_2": 1e-6, "lambda_2": 1e-6,},
     },
     n_divs_default = 25,
     param_names = ["p_sted", "p_ex"],
@@ -40,17 +43,13 @@ config =  dict(
     params_conf = { 'p_ex':20e-6, 'p_sted':0, },
     x_mins=[0, 6.25e-6],
     x_maxs=[0.0416, 0.0064],
-    obj_names=["Resolution", "Bleach", "SNR", ],
+    obj_names= obj_names,
     optim_length = 40,
     nbre_trials = 1,
     borders = [(0,300), (0,1), (0,4)],
-<<<<<<< HEAD
-#    borders = None,
-    param_space_bounds=None,
-=======
-    pareto_only=False,
-#    borders = None
->>>>>>> 891fd363f834db3f7ec2d69181cbfdc8b4fe6496
+    # Pareto options
+    pareto_option='grid',
+    NSGAII_kwargs = dict(NGEN=250, MU=100, L = 6, min_std=np.sqrt(2e-4*len(obj_names)))
               )
 
 

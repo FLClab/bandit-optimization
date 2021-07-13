@@ -18,6 +18,16 @@ from deap import base
 from deap import creator
 from deap import tools
 
+import pandas as pd
+import array
+import random
+from math import sqrt
+from deap import algorithms
+from deap import base
+from deap.benchmarks.tools import diversity, convergence, hypervolume
+from deap import creator
+from deap import tools
+
 
 def avg_area(img, radius, point):
     """Compute the average of the area defined by a *radius* around a given
@@ -241,7 +251,7 @@ def pareto_front(points):
         points_list[i].fitness.values = tuple(points_list[i])
         points_list[i].id = i
     individuals = tools.sortLogNondominated(points_list, k=len(points_list), first_front_only=True)
-#     front = np.array(individuals)
+#     front = numpy.array(individuals)
     return [x.id for x in individuals]
 
 # def pareto_front(points, discretization=100):
@@ -252,7 +262,7 @@ def pareto_front(points):
 #     a significant amount of time we separate the distribution of points
 #     in specific cuboids.
 #     The pareto front calculation is performed on the position of the
-#     cuboids in the input space instead of all points separately. This
+#     cuboids in the inumpyut space instead of all points separately. This
 #     allows to reduce the number of points during the pareto calculation.
 #     We then extract the points from each cuboids which are the points
 #     returned by this method.
@@ -334,3 +344,125 @@ def pareto_front(points):
 #     # We apply the unique operation to ensure that no points are
 #     # present multiple time
 #     return numpy.unique(return_indices)
+
+
+def uniform(low, up, size=None):
+    # This function is used by NSGAII
+    try:
+        return [random.uniform(a, b) for a, b in zip(low, up)]
+    except TypeError:
+        return [random.uniform(a, b) for a, b in zip([low] * size, [up] * size)]
+
+def NSGAII(optim_func, BOUND_LOW, BOUND_UP, weights, NGEN=250, MU=100,
+           CXPB=0.9, eta_cx=20.0, eta_mu=20.0, indpb_nom = 1,
+           L = 6, min_std=None, seed=None, prnt=False, return_niter=True):
+    """
+    ---- Problem parameters ----
+    param optim_func:   Function to optimize
+    param BOUND_LOW:    List of the lower bounds of the variables
+    param BOUND_UP:     List of the upper bounds of the variables
+    param weights:      List of weight. -1.0 if minize, +1.0 if maximize.
+    ---- NSGA-II parameters ----
+    param NGEN:         Number of generations
+    param MU:           Population size
+    param CXPB:         Probalbility of crossover
+    param eta_cx:       Crowding degree of the crossover
+    param eta_mu:       Crowding degree of the mutation
+    param indpb_nom:    Independent probability for each attribute to be exchanged = indpb_nom/NDIMS
+    param seed:         Random seed
+    param L:            Number values of max crowding distance on which the std is calculated
+    param min_std:      If not None, threshold under which the algorithm is stopped
+    
+    """
+    NDIM = len(BOUND_LOW)
+    indpb = indpb_nom/NDIM
+    
+    creator.create("FitnessMin", base.Fitness, weights=weights)
+    creator.create("Individual", array.array, typecode='d', fitness=creator.FitnessMin)
+    
+    toolbox = base.Toolbox()
+    toolbox.register("attr_float", uniform, BOUND_LOW, BOUND_UP, NDIM)
+    toolbox.register("individual", tools.initIterate, creator.Individual, toolbox.attr_float)
+    toolbox.register("population", tools.initRepeat, list, toolbox.individual)
+    toolbox.register("evaluate", optim_func)
+    toolbox.register("mate", tools.cxSimulatedBinaryBounded, low=BOUND_LOW, up=BOUND_UP, eta=eta_cx)
+    toolbox.register("mutate", tools.mutPolynomialBounded, low=BOUND_LOW, up=BOUND_UP, eta=eta_mu, indpb=indpb)
+    toolbox.register("select", tools.selNSGA2)
+    
+    
+    
+    random.seed(seed)
+
+    stats = tools.Statistics(lambda ind: ind.fitness.crowding_dist)
+    stats.register("avg", lambda x: numpy.mean(numpy.array(x)[numpy.array(x)!=numpy.inf]))
+#     stats.register("std", numpy.std)
+    stats.register("min", numpy.min)
+    stats.register("max", lambda x: numpy.max(numpy.array(x)[numpy.array(x)!=numpy.inf]))
+    
+    logbook = tools.Logbook()
+#     logbook.header = "gen", "evals", "std", "min", "avg", "max"
+    logbook.header = "gen", "evals", "min", "max"
+    
+    pop = toolbox.population(n=MU)
+
+    # Evaluate the individuals with an invalid fitness
+    invalid_ind = [ind for ind in pop if not ind.fitness.valid]
+    fitnesses = toolbox.map(toolbox.evaluate, invalid_ind)
+    for ind, fit in zip(invalid_ind, fitnesses):
+        ind.fitness.values = fit
+
+    # This is just to assign the crowding distance to the individuals
+    # no actual selection is done
+    pop = toolbox.select(pop, len(pop))
+    
+    record = stats.compile(pop)
+    logbook.record(gen=0, evals=len(invalid_ind), **record)
+    if prnt:
+        print(logbook.stream)
+    
+    # Begin the generational process
+    for gen in range(1, NGEN):
+        # Vary the population
+        offspring = tools.selTournamentDCD(pop, len(pop))
+        offspring = [toolbox.clone(ind) for ind in offspring]
+        
+        
+        for ind1, ind2 in zip(offspring[::2], offspring[1::2]):
+            if random.random() <= CXPB:
+                toolbox.mate(ind1, ind2)
+            
+            toolbox.mutate(ind1)
+            toolbox.mutate(ind2)
+            del ind1.fitness.values, ind2.fitness.values
+        
+        # Evaluate the individuals with an invalid fitness
+        invalid_ind = [ind for ind in offspring if not ind.fitness.valid]
+        fitnesses = toolbox.map(toolbox.evaluate, invalid_ind)
+        for ind, fit in zip(invalid_ind, fitnesses):
+            ind.fitness.values = fit
+
+        # Select the next generation population
+        pop = toolbox.select(pop + offspring, MU)
+        record = stats.compile(pop)
+        logbook.record(gen=gen, evals=len(invalid_ind), **record)
+        if prnt:
+            print(logbook.stream)
+        
+        
+        if gen >= L-1:
+            # Calculate the rolling std of the max crowding distance
+            std = numpy.std([d['max'] for d in logbook[-L:]])
+            if (min_std is not None) and (std < min_std):
+                # Stop the optimization
+                break
+            
+    
+    del creator.FitnessMin
+    del creator.Individual
+    if prnt:
+        print("Final population hypervolume is %f" % hypervolume(pop, [11.0]*len(weights)))
+    
+    if return_niter:
+        return numpy.array(tools.sortLogNondominated(pop, len(pop),first_front_only=True)), pd.DataFrame(logbook), gen+1
+    else:
+        return numpy.array(tools.sortLogNondominated(pop, len(pop),first_front_only=True)), pd.DataFrame(logbook)
