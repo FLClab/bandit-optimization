@@ -345,6 +345,48 @@ def pareto_front(points):
 #     # present multiple time
 #     return numpy.unique(return_indices)
 
+def bigger_than(values, low, high, bound_low, **kwargs):
+    """
+    Replaces the values within the desired range of values
+
+    :param values: A `list` of possible values
+    :param low: An `int` of the index of first option
+    :param high: An `int` of the index of second option
+    :param bound_low: A `list` of lower bounds
+
+    :returns : A `list` with valid values
+    """
+    if values[low] > values[high]:
+        values[low] = random.uniform(bound_low[low], values[high])
+    return values
+
+def conditioned_uniform(low, up, conditions, size=None):
+    """
+    Generates a conditioned uniform sampling
+
+    The list of conditions is assumed to contain `functools.partial` instantiated
+    methods. For example
+    ```
+    values = [2.2, 1.3]
+    conditions = [partial(bigger_than, low=0, high=1, bound_low=[0, 0])]
+    for condition in conditions:
+        values = condition(values)
+
+    # Would return
+    values = [random.uniform(0, 1.3), 1.3]
+    ```
+
+    :param low: A `list` of lower bounds
+    :param high: A `list` of higher bounds
+    :param conditions: A `list` of conditions
+    :param size: An optional parameter
+
+    :returns : A valid uniform sampling
+    """
+    values = [random.uniform(a, b) for a, b in zip(low, up)]
+    for condition in conditions:
+        values = condition(values)
+    return values
 
 def uniform(low, up, size=None):
     # This function is used by NSGAII
@@ -355,7 +397,8 @@ def uniform(low, up, size=None):
 
 def NSGAII(optim_func, BOUND_LOW, BOUND_UP, weights, NGEN=250, MU=100,
            CXPB=0.9, eta_cx=20.0, eta_mu=20.0, indpb_nom = 1,
-           L = 6, min_std=None, seed=None, prnt=False, return_niter=True):
+           L = 6, min_std=None, seed=None, prnt=False, return_niter=True,
+           conditions=[]):
     """
     ---- Problem parameters ----
     param optim_func:   Function to optimize
@@ -372,72 +415,105 @@ def NSGAII(optim_func, BOUND_LOW, BOUND_UP, weights, NGEN=250, MU=100,
     param seed:         Random seed
     param L:            Number values of max crowding distance on which the std is calculated
     param min_std:      If not None, threshold under which the algorithm is stopped
-    
+    param conditions:   A `list` of conditions
     """
+    def _max(x):
+        x = numpy.array(x)
+        where = x != numpy.inf
+        if numpy.any(where):
+            return numpy.max(x[where])
+        return 1.0e+9
+    def _min(x):
+        x = numpy.array(x)
+        where = x != numpy.inf
+        if numpy.any(where):
+            return numpy.min(x[where])
+        return 1.0e+9
+    def _mean(x):
+        x = numpy.array(x)
+        where = x != numpy.inf
+        if numpy.any(where):
+            return numpy.mean(x[where])
+        return 1.0e+9
+    def filter_individual(individuals, conditions):
+        filtered = []
+        for ind in individuals:
+            values = ind.tolist()
+            for condition in conditions:
+                values = condition(values)
+            filtered.append(creator.Individual(values))
+        return filtered
+
     NDIM = len(BOUND_LOW)
     indpb = indpb_nom/NDIM
-    
+
     creator.create("FitnessMin", base.Fitness, weights=weights)
     creator.create("Individual", array.array, typecode='d', fitness=creator.FitnessMin)
-    
+
     toolbox = base.Toolbox()
-    toolbox.register("attr_float", uniform, BOUND_LOW, BOUND_UP, NDIM)
+    if conditions:
+        toolbox.register("attr_float", conditioned_uniform, BOUND_LOW, BOUND_UP, conditions, NDIM)
+    else:
+        toolbox.register("attr_float", uniform, BOUND_LOW, BOUND_UP, NDIM)
     toolbox.register("individual", tools.initIterate, creator.Individual, toolbox.attr_float)
     toolbox.register("population", tools.initRepeat, list, toolbox.individual)
     toolbox.register("evaluate", optim_func)
     toolbox.register("mate", tools.cxSimulatedBinaryBounded, low=BOUND_LOW, up=BOUND_UP, eta=eta_cx)
     toolbox.register("mutate", tools.mutPolynomialBounded, low=BOUND_LOW, up=BOUND_UP, eta=eta_mu, indpb=indpb)
     toolbox.register("select", tools.selNSGA2)
-    
-    
-    
+    toolbox.register("filter", filter_individual)
+
+
     random.seed(seed)
 
     stats = tools.Statistics(lambda ind: ind.fitness.crowding_dist)
-    stats.register("avg", lambda x: numpy.mean(numpy.array(x)[numpy.array(x)!=numpy.inf]))
+    stats.register("avg", _mean)
 #     stats.register("std", numpy.std)
-    stats.register("min", numpy.min)
-    stats.register("max", lambda x: numpy.max(numpy.array(x)[numpy.array(x)!=numpy.inf]))
-    
+    stats.register("min", _min)
+    stats.register("max", _max)
+
     logbook = tools.Logbook()
 #     logbook.header = "gen", "evals", "std", "min", "avg", "max"
     logbook.header = "gen", "evals", "min", "max"
-    
+
     pop = toolbox.population(n=MU)
 
     # Evaluate the individuals with an invalid fitness
     invalid_ind = [ind for ind in pop if not ind.fitness.valid]
-    fitnesses = toolbox.map(toolbox.evaluate, invalid_ind)
+    fitnesses = optim_func(invalid_ind)
     for ind, fit in zip(invalid_ind, fitnesses):
         ind.fitness.values = fit
 
     # This is just to assign the crowding distance to the individuals
     # no actual selection is done
     pop = toolbox.select(pop, len(pop))
-    
+
     record = stats.compile(pop)
     logbook.record(gen=0, evals=len(invalid_ind), **record)
     if prnt:
         print(logbook.stream)
-    
+
     # Begin the generational process
     for gen in range(1, NGEN):
         # Vary the population
         offspring = tools.selTournamentDCD(pop, len(pop))
         offspring = [toolbox.clone(ind) for ind in offspring]
-        
-        
+
+
         for ind1, ind2 in zip(offspring[::2], offspring[1::2]):
             if random.random() <= CXPB:
                 toolbox.mate(ind1, ind2)
-            
+
             toolbox.mutate(ind1)
             toolbox.mutate(ind2)
             del ind1.fitness.values, ind2.fitness.values
-        
+
+        # Ensures the offspring also contains conditioned values
+        offspring = toolbox.filter(offspring, conditions)
+
         # Evaluate the individuals with an invalid fitness
         invalid_ind = [ind for ind in offspring if not ind.fitness.valid]
-        fitnesses = toolbox.map(toolbox.evaluate, invalid_ind)
+        fitnesses = optim_func(invalid_ind)
         for ind, fit in zip(invalid_ind, fitnesses):
             ind.fitness.values = fit
 
@@ -447,21 +523,21 @@ def NSGAII(optim_func, BOUND_LOW, BOUND_UP, weights, NGEN=250, MU=100,
         logbook.record(gen=gen, evals=len(invalid_ind), **record)
         if prnt:
             print(logbook.stream)
-        
-        
+
+
         if gen >= L-1:
             # Calculate the rolling std of the max crowding distance
             std = numpy.std([d['max'] for d in logbook[-L:]])
             if (min_std is not None) and (std < min_std):
                 # Stop the optimization
                 break
-            
-    
+
+
     del creator.FitnessMin
     del creator.Individual
     if prnt:
         print("Final population hypervolume is %f" % hypervolume(pop, [11.0]*len(weights)))
-    
+
     if return_niter:
         return numpy.array(tools.sortLogNondominated(pop, len(pop),first_front_only=True)), pd.DataFrame(logbook), gen+1
     else:

@@ -21,11 +21,11 @@ from inspect import currentframe, getframeinfo
 class MO_function_sample():
     """
     This class creates a function sample with randomly generated random seeds
-    
+
     algos: list of TS_sampler objects
     with_time: Optimize the (dell)time also
     param_names: list of parameters to optimize
-    
+
     individual: an array like object with parameter values
     """
     def __init__(self, algos, with_time, param_names):
@@ -33,18 +33,15 @@ class MO_function_sample():
         self.algos = algos
         self.with_time = with_time
         self.param_names = param_names
-    def evaluate(self, individual):
-        X = np.array(individual)[np.newaxis, :]
-        ys=[]
-#                        for i in range(len(self.algos)):
-#                            import pdb; pdb.set_trace()
-#                            ys.append(float(algos[i].sample(X, seed=self.seeds[i])))
-        ys = [float(self.algos[i].sample(X, seed=self.seeds[i])) for i in range(len(self.algos))]
+
+    def evaluate(self, individuals):
+        X = numpy.array(individuals)
+        ys = numpy.array([self.algos[i].sample(X, seed=self.seeds[i]) for i in range(len(self.algos))]).squeeze(axis=-1)
         if self.with_time:
             dwelltime_pos = list(X.flatten()).index('dwelltime')
             return tuple(ys + X[dwelltime_pos])
         else:
-            return tuple(ys)
+            return list(map(tuple, ys.T))
 
 def rescale_X(X, param_space_bounds):
     X = copy.deepcopy(X)
@@ -60,7 +57,7 @@ class sklearn_GP(GaussianProcessRegressor):
     regularization is fixed (no adaptative regularization).
     """
 
-    def __init__(self, cte, length_scale, noise_level, alpha, normalize_y=True ):
+    def __init__(self, cte, length_scale, noise_level, alpha, normalize_y=True, **kwargs):
 #        kernel=cte * RBF(length_scale=length_scale) + WhiteKernel(noise_level=noise_level)
 #        super().__init__(kernel=kernel, alpha=alpha, normalize_y=normalize_y, optimizer=optimizer, )
 #        lambda_ =
@@ -81,10 +78,10 @@ class sklearn_GP(GaussianProcessRegressor):
         std = self.norm_bound * sqrt_k
         return mean, std
 
-    def sample(self, X):
+    def sample(self, X, seed=None):
         mean, k = self.predict(X, return_cov=True)
         cov = self.norm_bound**2  * k
-        rng = numpy.random.default_rng()
+        rng = numpy.random.default_rng(seed)
         f_tilde = rng.multivariate_normal(mean.flatten(), cov, method='eigh')[:,np.newaxis]
         return f_tilde
 
@@ -101,7 +98,7 @@ class sklearn_BayesRidge(BayesianRidge):
                  tol=1e-6, fit_intercept=True,
                  compute_score=True,alpha_init=None,
                  lambda_init=None,
-                 alpha_1=1e-06, alpha_2=1e-06, lambda_1=1e-06, lambda_2=1e-06):
+                 alpha_1=1e-06, alpha_2=1e-06, lambda_1=1e-06, lambda_2=1e-06, **kwargs):
         super().__init__(tol=tol, fit_intercept=fit_intercept,
                          compute_score=compute_score, alpha_init=alpha_init,
                          lambda_init=lambda_init,
@@ -137,7 +134,7 @@ class sklearn_BayesRidge(BayesianRidge):
             return mean, std, std_withnoise
         else:
             return mean, std
-        
+
 
     def sample(self, X, seed=None):
         """Sample a function evaluated at points *X*.
@@ -157,7 +154,7 @@ class sklearn_BayesRidge(BayesianRidge):
         X = PolynomialFeatures(self.degree).fit_transform(X)[:,1:]
         return X@w_sample[:,np.newaxis] + self.intercept_
 
-        
+
 
 
 class TS_sampler():
