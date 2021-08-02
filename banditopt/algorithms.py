@@ -15,6 +15,8 @@ import numpy as np
 
 import copy
 
+from sklearn.preprocessing import StandardScaler
+
 from inspect import currentframe, getframeinfo
 
 
@@ -89,13 +91,13 @@ class sklearn_GP(GaussianProcessRegressor):
 class sklearn_BayesRidge(BayesianRidge):
     """This class is meant to be used as a the regressor argument of the TS_sampler
     class. It uses a scikit-learn implementation of bayesian linear regression to fit a
-    polynomial of a certain degree. fit_intercept=True should be used.
+    polynomial of a certain degree. fit_intercept=False should be used.
 
     :param degree: degree of the polynomial
     :param other parameters: see sklearn.linear_model.BayesianRidge documentation
     """
     def __init__(self, degree, param_space_bounds=None,
-                 tol=1e-6, fit_intercept=True,
+                 tol=1e-6, fit_intercept=False,
                  compute_score=True,alpha_init=None,
                  lambda_init=None,
                  alpha_1=1e-06, alpha_2=1e-06, lambda_1=1e-06, lambda_2=1e-06, **kwargs):
@@ -105,6 +107,9 @@ class sklearn_BayesRidge(BayesianRidge):
                         alpha_1=alpha_1, alpha_2=alpha_2, lambda_1=lambda_1, lambda_2=lambda_2)
         self.degree=degree
         self.param_space_bounds=param_space_bounds
+        
+        self.scaler = StandardScaler(with_mean=True, with_std=False)
+        self.y_mean = 0
 
 
     def update(self, X, y):
@@ -116,7 +121,13 @@ class sklearn_BayesRidge(BayesianRidge):
         """
         if self.param_space_bounds is not None:
             X = rescale_X(X, self.param_space_bounds)
-        X = PolynomialFeatures(self.degree).fit_transform(X)[:,1:]
+        if self.fit_intercept:
+            X = PolynomialFeatures(self.degree).fit_transform(X)[:,1:]
+        else:
+            X = PolynomialFeatures(self.degree).fit_transform(X)
+            self.y_mean = np.mean(y)
+            y = y - self.y_mean
+            
         self.fit(X,y.flatten())
 
     def get_mean_std(self, X, return_withnoise=False):
@@ -127,9 +138,14 @@ class sklearn_BayesRidge(BayesianRidge):
         """
         if self.param_space_bounds is not None:
             X = rescale_X(X, self.param_space_bounds)
-        X = PolynomialFeatures(self.degree).fit_transform(X)[:,1:]
+        if self.fit_intercept:
+            X = PolynomialFeatures(self.degree).fit_transform(X)[:,1:]
+        else:
+            X = PolynomialFeatures(self.degree).fit_transform(X)
         mean, std_withnoise = self.predict(X, return_std=True)
         std = np.sqrt(std_withnoise**2 - (1/self.alpha_))
+        if not self.fit_intercept:
+            mean+=self.y_mean
         if return_withnoise:
             return mean, std, std_withnoise
         else:
@@ -144,15 +160,17 @@ class sklearn_BayesRidge(BayesianRidge):
         """
         if self.param_space_bounds is not None:
             X = rescale_X(X, self.param_space_bounds)
-        rng = np.random.default_rng()
-#        weigths = self.coef_
-#        weigths[0] = self.intercept_
         if seed is not None:
             w_sample = np.random.default_rng(seed).multivariate_normal(self.coef_, self.sigma_)
         else:
             w_sample = np.random.default_rng().multivariate_normal(self.coef_, self.sigma_)
-        X = PolynomialFeatures(self.degree).fit_transform(X)[:,1:]
-        return X@w_sample[:,np.newaxis] + self.intercept_
+        if self.fit_intercept:
+            X = PolynomialFeatures(self.degree).fit_transform(X)[:,1:]
+            return X@w_sample[:,np.newaxis] + self.intercept_
+        else:
+            X = PolynomialFeatures(self.degree).fit_transform(X)
+            return X@w_sample[:,np.newaxis] + self.y_mean
+        
 
 
 
@@ -190,13 +208,13 @@ class TS_sampler():
         :returns: A 1-D array of the pointwise evaluation of a sampled function.
         """
         if self.X is not None:
-                return self.regressor.sample(X_sample, seed)
+            return self.regressor.sample(X_sample, seed)
         else:
 #             mean= np.full(X_sample.shape[0], 0)
 #             cov = np.identity(X_sample.shape[0])
 #             rng = np.random.default_rng()
 #             f_tilde = rng.multivariate_normal(mean, cov, method='eigh')
-              f_tilde = np.random.uniform(0,1,X_sample.shape[0])[:,np.newaxis]
+            f_tilde = np.random.uniform(0,1,X_sample.shape[0])[:,np.newaxis]
         return f_tilde
 
 
