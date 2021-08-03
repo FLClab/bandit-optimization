@@ -34,6 +34,7 @@ def get_config(message=None, image=None):
     if message is not None:
         print(message)
     print("Manually select imaging configuration then press enter.")
+    print(image)
     if image is not None:
         click_on_screenshot("auto_gui/Imspector_logo.png")
         click_on_screenshot("auto_gui/"+image)
@@ -64,8 +65,12 @@ def get_params(conf):
     '''
     return conf.parameters("ExpControl")
 
+def get_linestep(conf, step_id):
+    line_steps = conf.parameters("ExpControl/measurement/line_steps")
+    return line_steps['repetitions']
 
-def get_power(conf, laser_id):
+
+def get_power(conf, laser_id, channel_id=0):
     '''Fetch and return the power of a laser in a specific configuration.
 
     :param conf: A configuration object.
@@ -73,9 +78,9 @@ def get_power(conf, laser_id):
 
     :returns: The power (%).
     '''
-    params = conf.parameters("ExpControl/measurement")
+    # params = conf.parameters("ExpControl/measurement")
     #TODO: should we return a ratio instead?
-    return params["lasers"][laser_id]["power"]["calibrated"]
+    return conf.parameters(f"ExpControl/measurement/channels/{channel_id}/lasers/{laser_id}/power/calibrated")
 
 
 def get_pixelsize(conf):
@@ -223,39 +228,32 @@ def set_numberframe(conf, num):
 #     lasers = conf.parameters('ExpControl/lasers/power_calibrated')
 #     lasers[laser_id]["value"]["calibrated"] = power * 100
 #     conf.set_parameters("ExpControl/lasers/power_calibrated", lasers)
-# import time
+import time
+def set_power(conf, power, laser_id, channel_id=0):
+    '''Set the power of a laser in a specific configuration.
+
+    :param conf: A configuration object.
+    :param int laser_id: Imdex of the laser in Imspector (starting from 0).
+    :param float power: Power of the laser in [0, 1].
+    '''
+    conf.set_parameters(f"ExpControl/measurement/channels/{channel_id}/lasers/{laser_id}/power/calibrated", power)
+# import pyperclip
 # def set_power(conf, power, laser_id):
-#     '''Set the power of a laser in a specific configuration.
-#
-#     :param conf: A configuration object.
-#     :param int laser_id: Imdex of the laser in Imspector (starting from 0).
-#     :param float power: Power of the laser in [0, 1].
-#     '''
-#     lasers = conf.parameters("ExpControl/measurement/lasers")
-#     lasers[laser_id]['power']['calibrated'] = power
-#     print(power, laser_id)
-#     conf.set_parameters("ExpControl/measurement/lasers", lasers)
-#     while round(get_power(conf, laser_id), 2) != round(power, 2):
-#         print('Retrying to change the power in 0.5 seconds...')
-#         time.sleep(0.5)
-#         conf.set_parameters("ExpControl/measurement/lasers", lasers)
-import pyperclip
-def set_power(conf, power, laser_id):
-    print('WARNING: THIS JUST SETS THE STED POW WITH PYAUTOGUI')
-    click_on_screenshot("auto_gui/Imspector_logo.png")
-    click_on_screenshot("auto_gui/sted_logo.png")
-    pow_loc = (numpy.array(pyautogui.locateOnScreen("auto_gui/pow_logo.png", grayscale=True))).astype(int)
-    if laser_id==5:
-        pyautogui.moveTo(pow_loc[0]+100, pow_loc[1]-10)
-    elif laser_id==6:
-        pyautogui.moveTo(pow_loc[0]+100, pow_loc[1]+10)
-    elif laser_id==3:
-        pyautogui.moveTo(pow_loc[0]+100, pow_loc[1]-57)
-    pyperclip.copy(str(power))
-    pyautogui.click()
-    pyautogui.click()
-    pyautogui.hotkey('ctrl', 'v')
-    click_on_screenshot("auto_gui/promp_logo.png")
+#     print('WARNING: THIS JUST SETS THE STED POW WITH PYAUTOGUI')
+#     click_on_screenshot("auto_gui/Imspector_logo.png")
+#     click_on_screenshot("auto_gui/sted_logo.png")
+#     pow_loc = (numpy.array(pyautogui.locateOnScreen("auto_gui/pow_logo.png", grayscale=True))).astype(int)
+#     if laser_id==5:
+#         pyautogui.moveTo(pow_loc[0]+100, pow_loc[1]-10)
+#     elif laser_id==6:
+#         pyautogui.moveTo(pow_loc[0]+100, pow_loc[1]+10)
+#     elif laser_id==3:
+#         pyautogui.moveTo(pow_loc[0]+100, pow_loc[1]-57)
+#     pyperclip.copy(str(power))
+#     pyautogui.click()
+#     pyautogui.click()
+#     pyautogui.hotkey('ctrl', 'v')
+#     click_on_screenshot("auto_gui/promp_logo.png")
 
 
 
@@ -291,9 +289,10 @@ def set_linestep(conf, linestep, step_id):
     :param linestep: Line step.
     :param step_id: ID of the line step in Imspector (starting from 0).
     '''
-    step_values = conf.parameters("ExpControl/gating/linesteps/step_values")
-    step_values[step_id] = linestep
-    conf.set_parameters("ExpControl/gating/linesteps/step_values", step_values)
+    conf.set_parameters("ExpControl/measurement/line_steps/repetitions", linestep)
+
+
+
 
 
 def set_frametrig(conf,state):
