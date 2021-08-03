@@ -9,7 +9,7 @@ borders = {"Resolution":(0,350), "Bleach":(0,1), "SNR":(0,40)}
 
 
 config =  dict(
-    save_folder=f"2020-07-12-4params/deg{degree}",
+    save_folder=f"../bandit-optimization-experiments/2020-08-03-mult_params/deg{degree}",
     regressor_name="sklearn_BayesRidge",
     regressor_args= {
         "default":{
@@ -54,4 +54,3 @@ config =  dict(
               )
 
 optim.run_TS(config=config, **config)
-
