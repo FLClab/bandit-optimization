@@ -31,7 +31,7 @@ config_sted = microscope.get_config("Setting STED configuration.", "sted_logo.pn
 
 
 params_set = {"dwelltime": microscope.set_dwelltime,
-              "p_ex": functools.partial(microscope.set_power, laser_id=5),
+              "p_ex": functools.partial(microscope.set_power, laser_id=3),
               "p_sted": functools.partial(microscope.set_power, laser_id=6),
               "line_step": functools.partial(microscope.set_linestep, step_id=0),
               # "Rescue/Signal_Level": functools.partial(microscope.set_rescue_signal_level, channel_id=0),
@@ -75,8 +75,6 @@ def run_TS(config, save_folder="debug_trial", regressor_name="sklearn_BayesRidge
               for tradeoff selection
     """
 
-
-
     ndims = len(param_names)
 
     if n_points is None:
@@ -90,10 +88,11 @@ def run_TS(config, save_folder="debug_trial", regressor_name="sklearn_BayesRidge
         os.mkdir(save_folder)
     copyfile("banditopt/optim.py", os.path.join(save_folder,"optim.py"))
     copyfile("banditopt/algorithms.py", os.path.join(save_folder,"algorithms.py"))
+
     copyfile('run_optim_example_microscope.py', os.path.join(save_folder,"run_optim_example_microscope.py"))
     if split_sted_params is not None:
         copyfile('run_optim_example_split-sted.py', os.path.join(save_folder,"run_optim_example_split-sted.py"))
-        
+
     with open(os.path.join(save_folder, "config.yml"), 'w') as f:
         yaml.dump(config, f)
 
@@ -258,10 +257,13 @@ def run_TS(config, save_folder="debug_trial", regressor_name="sklearn_BayesRidge
                 split_sted_params["config_conf"] = config_conf
                 split_sted_params["config_sted"] = config_sted
                 for i in range(len(x_selected)):
+                    # import pdb; pdb.set_trace()
                     split_sted_params[param_names[i]] = float(x_selected[i])
                 sted_image, sted_stack = split_acquire.acquire(**split_sted_params)
                 sted_image = np.nan_to_num(sted_image)
+
                 dt_sted = time.time()-t0_sted
+
                 skio.imsave(os.path.join(save_folder, "sted_stack",str(no_trial), str(iter_idx)+".tiff"), sted_stack, check_contrast=False)
             else:
                 for i in range(len(x_selected)):
@@ -270,6 +272,7 @@ def run_TS(config, save_folder="debug_trial", regressor_name="sklearn_BayesRidge
                 stacks, _ = microscope.acquire(config_sted)
                 t0_sted = time.time()
                 sted_image = stacks[0][0]
+
                 dt_sted = time.time()-t0_sted
 
             skio.imsave(os.path.join(save_folder, "sted",str(no_trial), str(iter_idx)+".tiff"), sted_image.astype(np.float32), check_contrast=False)

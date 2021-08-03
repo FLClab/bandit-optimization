@@ -245,7 +245,12 @@ def set_power(conf, power, laser_id):
     click_on_screenshot("auto_gui/Imspector_logo.png")
     click_on_screenshot("auto_gui/sted_logo.png")
     pow_loc = (numpy.array(pyautogui.locateOnScreen("auto_gui/pow_logo.png", grayscale=True))).astype(int)
-    pyautogui.moveTo(pow_loc[0]+100, pow_loc[1]+10)
+    if laser_id==5:
+        pyautogui.moveTo(pow_loc[0]+100, pow_loc[1]-10)
+    elif laser_id==6:
+        pyautogui.moveTo(pow_loc[0]+100, pow_loc[1]+10)
+    elif laser_id==3:
+        pyautogui.moveTo(pow_loc[0]+100, pow_loc[1]-57)
     pyperclip.copy(str(power))
     pyautogui.click()
     pyautogui.click()
