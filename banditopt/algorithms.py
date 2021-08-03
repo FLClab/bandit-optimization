@@ -15,17 +15,19 @@ import numpy as np
 
 import copy
 
+from sklearn.preprocessing import StandardScaler
+
 from inspect import currentframe, getframeinfo
 
 
 class MO_function_sample():
     """
     This class creates a function sample with randomly generated random seeds
-    
+
     algos: list of TS_sampler objects
     with_time: Optimize the (dell)time also
     param_names: list of parameters to optimize
-    
+
     individual: an array like object with parameter values
     """
     def __init__(self, algos, with_time, param_names):
@@ -33,18 +35,15 @@ class MO_function_sample():
         self.algos = algos
         self.with_time = with_time
         self.param_names = param_names
-    def evaluate(self, individual):
-        X = np.array(individual)[np.newaxis, :]
-        ys=[]
-#                        for i in range(len(self.algos)):
-#                            import pdb; pdb.set_trace()
-#                            ys.append(float(algos[i].sample(X, seed=self.seeds[i])))
-        ys = [float(self.algos[i].sample(X, seed=self.seeds[i])) for i in range(len(self.algos))]
+
+    def evaluate(self, individuals):
+        X = numpy.array(individuals)
+        ys = numpy.array([self.algos[i].sample(X, seed=self.seeds[i]) for i in range(len(self.algos))]).squeeze(axis=-1)
         if self.with_time:
             dwelltime_pos = list(X.flatten()).index('dwelltime')
             return tuple(ys + X[dwelltime_pos])
         else:
-            return tuple(ys)
+            return list(map(tuple, ys.T))
 
 def rescale_X(X, param_space_bounds):
     X = copy.deepcopy(X)
@@ -60,7 +59,7 @@ class sklearn_GP(GaussianProcessRegressor):
     regularization is fixed (no adaptative regularization).
     """
 
-    def __init__(self, cte, length_scale, noise_level, alpha, normalize_y=True ):
+    def __init__(self, cte, length_scale, noise_level, alpha, normalize_y=True, **kwargs):
 #        kernel=cte * RBF(length_scale=length_scale) + WhiteKernel(noise_level=noise_level)
 #        super().__init__(kernel=kernel, alpha=alpha, normalize_y=normalize_y, optimizer=optimizer, )
 #        lambda_ =
@@ -81,10 +80,10 @@ class sklearn_GP(GaussianProcessRegressor):
         std = self.norm_bound * sqrt_k
         return mean, std
 
-    def sample(self, X):
+    def sample(self, X, seed=None):
         mean, k = self.predict(X, return_cov=True)
         cov = self.norm_bound**2  * k
-        rng = numpy.random.default_rng()
+        rng = numpy.random.default_rng(seed)
         f_tilde = rng.multivariate_normal(mean.flatten(), cov, method='eigh')[:,np.newaxis]
         return f_tilde
 
@@ -92,22 +91,25 @@ class sklearn_GP(GaussianProcessRegressor):
 class sklearn_BayesRidge(BayesianRidge):
     """This class is meant to be used as a the regressor argument of the TS_sampler
     class. It uses a scikit-learn implementation of bayesian linear regression to fit a
-    polynomial of a certain degree. fit_intercept=True should be used.
+    polynomial of a certain degree. fit_intercept=False should be used.
 
     :param degree: degree of the polynomial
     :param other parameters: see sklearn.linear_model.BayesianRidge documentation
     """
     def __init__(self, degree, param_space_bounds=None,
-                 tol=1e-6, fit_intercept=True,
+                 tol=1e-6, fit_intercept=False,
                  compute_score=True,alpha_init=None,
                  lambda_init=None,
-                 alpha_1=1e-06, alpha_2=1e-06, lambda_1=1e-06, lambda_2=1e-06):
+                 alpha_1=1e-06, alpha_2=1e-06, lambda_1=1e-06, lambda_2=1e-06, **kwargs):
         super().__init__(tol=tol, fit_intercept=fit_intercept,
                          compute_score=compute_score, alpha_init=alpha_init,
                          lambda_init=lambda_init,
                         alpha_1=alpha_1, alpha_2=alpha_2, lambda_1=lambda_1, lambda_2=lambda_2)
         self.degree=degree
         self.param_space_bounds=param_space_bounds
+        
+        self.scaler = StandardScaler(with_mean=True, with_std=False)
+        self.y_mean = 0
 
 
     def update(self, X, y):
@@ -119,7 +121,13 @@ class sklearn_BayesRidge(BayesianRidge):
         """
         if self.param_space_bounds is not None:
             X = rescale_X(X, self.param_space_bounds)
-        X = PolynomialFeatures(self.degree).fit_transform(X)[:,1:]
+        if self.fit_intercept:
+            X = PolynomialFeatures(self.degree).fit_transform(X)[:,1:]
+        else:
+            X = PolynomialFeatures(self.degree).fit_transform(X)
+            self.y_mean = np.mean(y)
+            y = y - self.y_mean
+            
         self.fit(X,y.flatten())
 
     def get_mean_std(self, X, return_withnoise=False):
@@ -130,14 +138,19 @@ class sklearn_BayesRidge(BayesianRidge):
         """
         if self.param_space_bounds is not None:
             X = rescale_X(X, self.param_space_bounds)
-        X = PolynomialFeatures(self.degree).fit_transform(X)[:,1:]
+        if self.fit_intercept:
+            X = PolynomialFeatures(self.degree).fit_transform(X)[:,1:]
+        else:
+            X = PolynomialFeatures(self.degree).fit_transform(X)
         mean, std_withnoise = self.predict(X, return_std=True)
         std = np.sqrt(std_withnoise**2 - (1/self.alpha_))
+        if not self.fit_intercept:
+            mean+=self.y_mean
         if return_withnoise:
             return mean, std, std_withnoise
         else:
             return mean, std
-        
+
 
     def sample(self, X, seed=None):
         """Sample a function evaluated at points *X*.
@@ -147,17 +160,19 @@ class sklearn_BayesRidge(BayesianRidge):
         """
         if self.param_space_bounds is not None:
             X = rescale_X(X, self.param_space_bounds)
-        rng = np.random.default_rng()
-#        weigths = self.coef_
-#        weigths[0] = self.intercept_
         if seed is not None:
             w_sample = np.random.default_rng(seed).multivariate_normal(self.coef_, self.sigma_)
         else:
             w_sample = np.random.default_rng().multivariate_normal(self.coef_, self.sigma_)
-        X = PolynomialFeatures(self.degree).fit_transform(X)[:,1:]
-        return X@w_sample[:,np.newaxis] + self.intercept_
-
+        if self.fit_intercept:
+            X = PolynomialFeatures(self.degree).fit_transform(X)[:,1:]
+            return X@w_sample[:,np.newaxis] + self.intercept_
+        else:
+            X = PolynomialFeatures(self.degree).fit_transform(X)
+            return X@w_sample[:,np.newaxis] + self.y_mean
         
+
+
 
 
 class TS_sampler():
@@ -193,13 +208,13 @@ class TS_sampler():
         :returns: A 1-D array of the pointwise evaluation of a sampled function.
         """
         if self.X is not None:
-                return self.regressor.sample(X_sample, seed)
+            return self.regressor.sample(X_sample, seed)
         else:
 #             mean= np.full(X_sample.shape[0], 0)
 #             cov = np.identity(X_sample.shape[0])
 #             rng = np.random.default_rng()
 #             f_tilde = rng.multivariate_normal(mean, cov, method='eigh')
-              f_tilde = np.random.uniform(0,1,X_sample.shape[0])[:,np.newaxis]
+            f_tilde = np.random.uniform(0,1,X_sample.shape[0])[:,np.newaxis]
         return f_tilde
 
 

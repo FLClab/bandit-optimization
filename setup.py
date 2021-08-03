@@ -5,4 +5,9 @@ setup(
 	name="banditopt",
 	version="0.1",
 	author="Albert",
+	install_requires=[
+		"pyyaml",
+		"statsmodels",
+		"deap"
+	]
 )
