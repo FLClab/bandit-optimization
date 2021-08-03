@@ -31,7 +31,7 @@ config_sted = microscope.get_config("Setting STED configuration.", "sted_logo.pn
 
 
 params_set = {"dwelltime": microscope.set_dwelltime,
-              "p_ex": functools.partial(microscope.set_power, laser_id=5),
+              "p_ex": functools.partial(microscope.set_power, laser_id=3),
               "p_sted": functools.partial(microscope.set_power, laser_id=6),
               # "Line_Step": functools.partial(microscope.set_linestep, step_id=0),
               # "Rescue/Signal_Level": functools.partial(microscope.set_rescue_signal_level, channel_id=0),
@@ -75,8 +75,6 @@ def run_TS(config, save_folder="debug_trial", regressor_name="sklearn_BayesRidge
               for tradeoff selection
     """
 
-
-
     ndims = len(param_names)
     n_points = [n_divs_default]*ndims
     config["computer"] = platform.uname()._asdict()
@@ -87,7 +85,7 @@ def run_TS(config, save_folder="debug_trial", regressor_name="sklearn_BayesRidge
         os.mkdir(save_folder)
     copyfile("banditopt/optim.py", os.path.join(save_folder,"optim.py"))
     copyfile("banditopt/algorithms.py", os.path.join(save_folder,"algorithms.py"))
-    copyfile('run_optim_example_microscope.py', os.path.join(save_folder,"run_optim_example_microscope.py"))
+    copyfile('run_optim_example_split-sted.py', os.path.join(save_folder,"run_optim_example_split-sted.py"))
     with open(os.path.join(save_folder, "config.yml"), 'w') as f:
         yaml.dump(config, f)
 
@@ -129,7 +127,7 @@ def run_TS(config, save_folder="debug_trial", regressor_name="sklearn_BayesRidge
         #     regions += user.get_regions(config=config_overview, overview_name='640 {0}')
 
         config_overview = microscope.get_config("Setting STED configuration.", 'overview_logo.png')
-        regions = user.get_regions(config=config_overview, overview_name='640 {12}')
+        regions = user.get_regions(config=config_overview, overview_name='640 {0}')
         regions.reverse()
 
         s_lb, s_ub, dts, dts_sampling, dts_update = [], [], [], [], []
@@ -192,24 +190,26 @@ def run_TS(config, save_folder="debug_trial", regressor_name="sklearn_BayesRidge
 
             stacks, _ = microscope.acquire(config_conf)
             conf1 = stacks[0][0]
-            skio.imsave(os.path.join(save_folder, "conf1",str(no_trial), str(iter_idx)+".tiff"), conf1)
+            skio.imsave(os.path.join(save_folder, "conf1",str(no_trial), str(iter_idx)+".tiff"), conf1, check_contrast=False)
             if split_sted_params is not None:
                 split_sted_params["config_conf"] = config_conf
                 split_sted_params["config_sted"] = config_sted
                 for i in range(len(x_selected)):
+                    # import pdb; pdb.set_trace()
                     split_sted_params[param_names[i]] = float(x_selected[i])
                 sted_image, sted_stack = split_acquire.acquire(**split_sted_params)
-                skio.imsave(os.path.join(save_folder, "sted_stack",str(no_trial), str(iter_idx)+".tiff"), sted_stack)
+                sted_image = np.nan_to_num(sted_image)
+                skio.imsave(os.path.join(save_folder, "sted_stack",str(no_trial), str(iter_idx)+".tiff"), sted_stack, check_contrast=False)
             else:
                 for i in range(len(x_selected)):
                     params_set[param_names[i]](config_sted, float(x_selected[i]))
                     print(f'------------------ Parameter {param_names[i]} set to {float(x_selected[i])}-----------')
                 stacks, _ = microscope.acquire(config_sted)
                 sted_image = stacks[0][0]
-            skio.imsave(os.path.join(save_folder, "sted",str(no_trial), str(iter_idx)+".tiff"), sted_image)
+            skio.imsave(os.path.join(save_folder, "sted",str(no_trial), str(iter_idx)+".tiff"), sted_image.astype(np.float32), check_contrast=False)
             stacks, _ = microscope.acquire(config_conf)
             conf2 = stacks[0][0]
-            skio.imsave(os.path.join(save_folder, "conf2",str(no_trial), str(iter_idx)+".tiff"), conf2)
+            skio.imsave(os.path.join(save_folder, "conf2",str(no_trial), str(iter_idx)+".tiff"), conf2, check_contrast=False)
 
 
 
@@ -220,7 +220,10 @@ def run_TS(config, save_folder="debug_trial", regressor_name="sklearn_BayesRidge
             # foreground on confocal image
             fg_c = utils.get_foreground(conf1)
             # foreground on sted image
-            fg_s = utils.get_foreground(sted_image)
+            if np.any(sted_image):
+                fg_s = utils.get_foreground(sted_image)
+            else:
+                fg_s = np.ones_like(sted_image)
             # remove STED foreground points not in confocal foreground, if any
             fg_s *= fg_c
 
