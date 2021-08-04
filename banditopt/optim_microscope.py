@@ -31,9 +31,10 @@ config_sted = microscope.get_config("Setting STED configuration.", "sted_logo.pn
 
 
 params_set = {"dwelltime": microscope.set_dwelltime,
-              "p_ex": functools.partial(microscope.set_power, laser_id=3),
+              "p_ex": functools.partial(microscope.set_power, laser_id=5),
               "p_sted": functools.partial(microscope.set_power, laser_id=6),
               "line_step": functools.partial(microscope.set_linestep, step_id=0),
+              "pixelsize": functools.partial(microscope.set_pixelsize),
               # "Rescue/Signal_Level": functools.partial(microscope.set_rescue_signal_level, channel_id=0),
               # "Rescue/Strength": functools.partial(microscope.set_rescue_strength, channel_id=0)
               }
@@ -75,11 +76,16 @@ def run_TS(config, save_folder="debug_trial", regressor_name="sklearn_BayesRidge
               for tradeoff selection
     """
 
+    # Set the default sted parameters
+    for name, value in default_values_dict.items():
+        params_set[name](config_sted, float(value))
+
+
     ndims = len(param_names)
 
     if n_points is None:
         n_points = [n_divs_default]*ndims
-    
+
     config["computer"] = platform.uname()._asdict()
 
 
@@ -143,7 +149,7 @@ def run_TS(config, save_folder="debug_trial", regressor_name="sklearn_BayesRidge
 #             print(f"    iter {i}...")
             # Sample objective values over the parameter space
             t0 = time.time()
-            
+
             if pareto_option != 'nsga':
                 y_samples = [algo.sample(X) for algo in algos]
                 np.savetxt(os.path.join(save_folder, "y_samples",str(no_trial), str(iter_idx)+".csv"), np.dstack(y_samples).squeeze(), delimiter=",")
@@ -156,7 +162,10 @@ def run_TS(config, save_folder="debug_trial", regressor_name="sklearn_BayesRidge
                     timesperpixel = timesperpixel.flatten()
                 else:
                     #TODO: I should correct those condition for more generality
-                    timesperpixel = X[:,param_names.index("dwelltime")]*X[:,param_names.index("line_step")]
+                    if 'line_step' in param_names:
+                        timesperpixel = X[:,param_names.index("dwelltime")]*X[:,param_names.index("line_step")]
+                    else:
+                        timesperpixel = X[:,param_names.index("dwelltime")]
 
 
                 # Select a point
@@ -196,7 +205,8 @@ def run_TS(config, save_folder="debug_trial", regressor_name="sklearn_BayesRidge
                     x_selected = np.random.uniform(x_mins, x_maxs)[:, np.newaxis]
                     dt_sampling = 0
                 else:
-                    sampled_MO_function = algorithms.MO_function_sample(algos, with_time, param_names).evaluate
+                    sampled_MO_function_obj = algorithms.MO_function_sample(algos, with_time, param_names)
+                    sampled_MO_function = sampled_MO_function_obj.evaluate
                     nsga_weigts = [-1 if obj_dict[obj_name]==np.argmin else +1  for obj_name in obj_names]
                     if with_time:
                         nsga_weigts += [-1]
@@ -205,12 +215,18 @@ def run_TS(config, save_folder="debug_trial", regressor_name="sklearn_BayesRidge
                     X_sample, logbook, ngens = utils.NSGAII(sampled_MO_function, x_mins, x_maxs, nsga_weigts, **NSGAII_kwargs)
                     dt_sampling = time.time()-t0
                     print(f"The pareto front was calculated in {dt_sampling:.2} seconds with {ngens} generations")
-                    timesperpixel = X_sample[:,param_names.index("dwelltime")]*X_sample[:,param_names.index("line_step")]
+
+
+
                     if time_limit is not None:
+                        if 'line_step' in param_names:
+                            timesperpixel = X_sample[:,param_names.index("dwelltime")]*X_sample[:,param_names.index("line_step")]
+                        else:
+                            timesperpixel = X_sample[:,param_names.index("dwelltime")]
                         X_sample = X_sample[timesperpixel<=time_limit]
-                    
-                    y_samples = [algo.sample(X_sample, seed=sampled_MO_function.seeds[i_seed]) for i_seed, algo in enumerate(algos)]
-                    
+
+                    y_samples = [algo.sample(X_sample, seed=sampled_MO_function_obj.seeds[i_seed]) for i_seed, algo in enumerate(algos)]
+
                     if with_time:
                         dwelltime_pos = list(X[0,:].flatten()).index('dwelltime')
                         timesperpixel = X_sample[:, dwelltime_pos]
@@ -220,14 +236,14 @@ def run_TS(config, save_folder="debug_trial", regressor_name="sklearn_BayesRidge
 
                     np.savetxt(os.path.join(save_folder, "X_sample",str(no_trial), str(iter_idx)+".csv"), X_sample, delimiter=",")
                     np.savetxt(os.path.join(save_folder, "y_samples",str(no_trial), str(iter_idx)+".csv"), np.dstack(y_samples).squeeze(), delimiter=",")
-                
+
             else:
                 raise ValueError(f"The pareto_option {pareto_option} does not exists")
-                
-                
-                
-                
-                
+
+
+
+
+
             print("x_selected=", x_selected)
 
 
@@ -297,7 +313,8 @@ def run_TS(config, save_folder="debug_trial", regressor_name="sklearn_BayesRidge
             fg_s *= fg_c
 
             # Evaluate the objective results
-            obj_dict["Resolution"] = objectives.Resolution(pixelsize=default_values_dict["pixelsize"], res_cap=borders[obj_names.index("SNR")][1]) #Just in case the pixelsize have changed
+            if "Resolution" in obj_names:
+                obj_dict["Resolution"] = objectives.Resolution(pixelsize=default_values_dict["pixelsize"], res_cap=borders[obj_names.index("Resolution")][1]) #Just in case the pixelsize have changed
             y_result = np.array([obj_dict[name].evaluate([sted_image], conf1, conf2, fg_s, fg_c) for name in obj_names])
             print(x_selected.T, y_result)
 
@@ -313,8 +330,8 @@ def run_TS(config, save_folder="debug_trial", regressor_name="sklearn_BayesRidge
 #            s_ub.append(algo.s_ub)
 
             # Save data to text files
-            if pareto_option != 'nsga':
-                np.savetxt(os.path.join(save_folder,f'X_{no_trial}.csv'), algos[0].X, delimiter=",")
+
+            np.savetxt(os.path.join(save_folder,f'X_{no_trial}.csv'), algos[0].X, delimiter=",")
             y_array = np.hstack([algos[i].y[:,np.newaxis] for i in range(len(obj_names))])
             np.savetxt(os.path.join(save_folder,f'y_{no_trial}.csv'), y_array, delimiter=",")
     #        np.savetxt(os.path.join(save_folder,f's_lb_{no_trial}.csv'), np.array(s_lb), delimiter=",")

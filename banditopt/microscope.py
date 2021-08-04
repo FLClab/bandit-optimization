@@ -159,14 +159,17 @@ def get_image(conf):
     return conf.stack("Confocal_635").data()[0][0]
 
 
-def set_pixelsize(conf, x, y):
+def set_pixelsize(conf, x, y=None):
     '''Sets the pixel size
 
     :param conf: Configuration window
     :param x: pixel size in x
     :param y: pixel size in y'''
     conf.set_parameters("ExpControl/scan/range/x/psz", x)
-    conf.set_parameters("ExpControl/scan/range/y/psz", y)
+    if y is None:
+        conf.set_parameters("ExpControl/scan/range/y/psz", x)
+    else:
+        conf.set_parameters("ExpControl/scan/range/y/psz", y)
 
 
 def set_offsets(conf, x, y):

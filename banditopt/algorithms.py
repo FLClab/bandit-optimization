@@ -31,7 +31,7 @@ class MO_function_sample():
     individual: an array like object with parameter values
     """
     def __init__(self, algos, with_time, param_names):
-        self.seeds = [np.random.randint(2**32-1) for i in range(len(algos))]
+        self.seeds = [np.random.randint(2**31) for i in range(len(algos))]
         self.algos = algos
         self.with_time = with_time
         self.param_names = param_names
@@ -107,7 +107,7 @@ class sklearn_BayesRidge(BayesianRidge):
                         alpha_1=alpha_1, alpha_2=alpha_2, lambda_1=lambda_1, lambda_2=lambda_2)
         self.degree=degree
         self.param_space_bounds=param_space_bounds
-        
+
         self.scaler = StandardScaler(with_mean=True, with_std=False)
         self.y_mean = 0
 
@@ -127,7 +127,7 @@ class sklearn_BayesRidge(BayesianRidge):
             X = PolynomialFeatures(self.degree).fit_transform(X)
             self.y_mean = np.mean(y)
             y = y - self.y_mean
-            
+
         self.fit(X,y.flatten())
 
     def get_mean_std(self, X, return_withnoise=False):
@@ -170,7 +170,7 @@ class sklearn_BayesRidge(BayesianRidge):
         else:
             X = PolynomialFeatures(self.degree).fit_transform(X)
             return X@w_sample[:,np.newaxis] + self.y_mean
-        
+
 
 
 

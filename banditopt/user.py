@@ -303,7 +303,10 @@ def select(thetas, objectives, with_time, times, figsize=(10, 10), borders=None)
         xmin, xmax = borders[1]
         delta = xmax-xmin
         ax.set_ylim(xmin-0.1*delta, xmax+0.1*delta)
-        sc.set_clim(borders[2])
+        if len(borders) >=3:
+            sc.set_clim(borders[2])
+
+
     else:
 #            pyplot.sca(ax)
 #            pyplot.axis('tight')
