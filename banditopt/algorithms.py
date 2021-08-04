@@ -69,11 +69,21 @@ class sklearn_GP(GaussianProcessRegressor):
         self.noise_var = noise_level
         self.norm_bound = norm_bound
 
+        self.scaler = StandardScaler(with_mean=True, with_std=False)
+
     def update(self, X, y):
+        if y.ndim == 1:
+            y = y[:, numpy.newaxis]
+        y = self.scaler.fit_transform(y)
+
         self.fit(X,y)
 
     def get_mean_std(self, X):
         mean, sqrt_k = self.predict(X, return_std=True)
+
+        # Rescales sampled mean
+        mean = self.scaler.inverse_transform(mean)
+
 #        std = np.sqrt(std**2 - self.noise_var)
 #        mean, sqrt_k = gp.predict(X_pred, return_std=True)
 #        std = self.s_ub / numpy.sqrt(self.lambda_) * sqrt_k
@@ -82,6 +92,10 @@ class sklearn_GP(GaussianProcessRegressor):
 
     def sample(self, X, seed=None):
         mean, k = self.predict(X, return_cov=True)
+
+        # Rescales sampled mean
+        mean = self.scaler.inverse_transform(mean)
+
         cov = self.norm_bound**2  * k
         rng = numpy.random.default_rng(seed)
         f_tilde = rng.multivariate_normal(mean.flatten(), cov, method='eigh')[:,np.newaxis]
@@ -125,8 +139,11 @@ class sklearn_BayesRidge(BayesianRidge):
             X = PolynomialFeatures(self.degree).fit_transform(X)[:,1:]
         else:
             X = PolynomialFeatures(self.degree).fit_transform(X)
-            self.y_mean = np.mean(y)
-            y = y - self.y_mean
+            # self.y_mean = np.mean(y)
+            # y = y - self.y_mean
+            if y.ndim == 1:
+                y = y[:, numpy.newaxis]
+            y = self.scaler.fit_transform(y)
 
         self.fit(X,y.flatten())
 
@@ -145,7 +162,8 @@ class sklearn_BayesRidge(BayesianRidge):
         mean, std_withnoise = self.predict(X, return_std=True)
         std = np.sqrt(std_withnoise**2 - (1/self.alpha_))
         if not self.fit_intercept:
-            mean+=self.y_mean
+            mean = self.scaler.inverse_transform(mean)
+            # mean+=self.y_mean
         if return_withnoise:
             return mean, std, std_withnoise
         else:
@@ -169,7 +187,8 @@ class sklearn_BayesRidge(BayesianRidge):
             return X@w_sample[:,np.newaxis] + self.intercept_
         else:
             X = PolynomialFeatures(self.degree).fit_transform(X)
-            return X@w_sample[:,np.newaxis] + self.y_mean
+            y = X@w_sample[:,np.newaxis]
+            return self.scaler.inverse_transform(y)
 
 
 
