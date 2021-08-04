@@ -247,7 +247,7 @@ def get_regions(at_least_n=1, config=None, overview_name=None):
     regions_offset = [(x + x_offset, y + y_offset) for (x, y) in regions]
     return regions_offset
 
-def select(thetas, objectives, with_time, times, figsize=(10, 10), borders=None):
+def select(thetas, objectives, with_time, times, figsize=(10, 10), borders=None, cmap=None):
     """Asks the user to select the best option by clicking on the points from the
     :mod:`matplotlib` figure. If several points overlap, select the one that minimizes
     the time (or third objective).
@@ -272,7 +272,10 @@ def select(thetas, objectives, with_time, times, figsize=(10, 10), borders=None)
 
     # set to your favorite colormap (see https://matplotlib.org/users/colormaps.html)
 #    cmap = pyplot.cm.get_cmap("nipy_spectral")
-    cmap = pyplot.cm.get_cmap("jet")
+    if isinstance(cmap, type(None)):
+        cmap = pyplot.cm.get_cmap("jet")
+    else:
+        cmap = pyplot.cm.get_cmap(cmap)
 
     if with_time:
         title = ax.set_title(f"Pick the best option by clicking on the point. Tmin={numpy.min(times)}, Tmax={numpy.max(times)}")
@@ -295,6 +298,8 @@ def select(thetas, objectives, with_time, times, figsize=(10, 10), borders=None)
             sc = ax.scatter(thetas[0], thetas[1], s=(times-times.min())/time_range * 60 + 20, marker="o", alpha=0.5, picker=3)
         else:
             sc = ax.scatter(thetas[0], thetas[1], marker="o", alpha=0.5, picker=3)
+    elif len(thetas) == 4:
+        sc = ax.scatter(thetas[0], thetas[1], c=thetas[2], s=thetas[3], marker="o", alpha=0.5, picker=3, cmap=cmap)
     ax.grid(True)
     if borders is not None:
         xmin, xmax = borders[0]
@@ -402,10 +407,10 @@ def select(thetas, objectives, with_time, times, figsize=(10, 10), borders=None)
         index = numpy.random.choice(candidates)
 
     fig.canvas.mpl_connect("pick_event", onpick)
-    pyplot.show(block=False)
-    while pyplot.waitforbuttonpress():
-        pass
-    pyplot.close()
+    pyplot.show(block=True)
+    # while pyplot.waitforbuttonpress():
+        # pass
+    # pyplot.close()
     assert index is not None, "User did not pick any point!"
     return index
 
