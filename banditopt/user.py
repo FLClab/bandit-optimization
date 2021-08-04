@@ -5,7 +5,7 @@ content.
 """
 
 import numpy
-# import matplotlib; matplotlib.use("TkAgg")
+import matplotlib; matplotlib.use("TkAgg")
 from matplotlib import gridspec, pyplot , widgets
 pyplot.ion()
 
@@ -159,7 +159,7 @@ def get_lines(img, n, maxratio=0.4, figsize=(10, 10), **kwargs):
     return lines
 
 
-def get_points(img, at_least_n, label=""):
+def get_points(img, at_least_n, label="", pixelsize=None, x_offset=None, y_offset=None, resolution=None):
     """This function uses the class :class:`PointPicker` to ask the user
     to select at least `at_least_n` points on a given image and return their
     positions (indices in `img`).
@@ -175,8 +175,26 @@ def get_points(img, at_least_n, label=""):
         fig = pyplot.figure()
         fig.canvas.set_window_title("Pick at least {} {}".format(points_left, label))
         pp = PointPicker(fig)
-        pyplot.imshow(img, interpolation=None, picker=True, cmap="gray",  vmax=0.4*numpy.max(img))
+
+        # if pixelsize is not None:
+        #     # pyplot.gca().set_yticklabels(numpy.around(pyplot.yticks()[0]*pixelsize[1] + (y_offset-resolution[1]/2)*pixelsize[1], 2))
+        #     # pyplot.gca().set_xticklabels(numpy.around(pyplot.xticks()[0]*pixelsize[0] + (x_offset-resolution[0]/2)*pixelsize[0], 2))
+        #     minx = (x_offset-resolution[0]/2)*pixelsize[0]
+        #     maxx = (x_offset+resolution[0]/2)*pixelsize[0]
+        #     miny = (y_offset-resolution[1]/2)*pixelsize[1]
+        #     maxy = (y_offset+resolution[1]/2)*pixelsize[1]
+        pyplot.imshow(img, interpolation=None, picker=True, cmap="gray",  vmax=0.4*numpy.max(img))#, extent=(minx, maxx, miny, maxy))
+        # pyplot.locator_params(axis='y', nbins=21)
+        # pyplot.locator_params(axis='x', nbins=21)
+        # import pdb; pdb.set_trace()
+        if len(points)>0:
+            print(points)
+            break
+            pyplot.scatter([point[0] for point in points], [point[1] for point in points])
         pyplot.colorbar()
+
+
+
         pyplot.grid(True)
         pyplot.show(block=True)
         points.extend(pp.points)
@@ -184,7 +202,27 @@ def get_points(img, at_least_n, label=""):
         if not points:
             print("early return in function get_points (user.py)")
             break
+
     return points
+
+
+# def get_regions(at_least_n=1, config=None, overview_name=None):
+#     """Acquire an overview from a specific configuration, ask the user to select
+#     regions and return their offsets.
+#
+#     :param at_least_n: The minimum number of regions to select.
+#     :param config: The microscope configuration.
+#     :param overview_name: The name of the overview.
+#     :return: The offsets of the selected regions.
+#     """
+#     if config is None:
+#         config = microscope.get_config("Setting configuration for overview", "overview_logo.png")
+#     img = microscope.get_overview(config, name=overview_name)
+#     points = get_points(img, at_least_n, " subregions within the overview")
+#     regions = utils.points2regions(points, microscope.get_pixelsize(config), microscope.get_resolution(config))
+#     x_offset, y_offset = microscope.get_offsets(config)
+#     regions_offset = [(x + x_offset, y + y_offset) for (x, y) in regions]
+#     return regions_offset
 
 
 def get_regions(at_least_n=1, config=None, overview_name=None):
@@ -199,13 +237,17 @@ def get_regions(at_least_n=1, config=None, overview_name=None):
     if config is None:
         config = microscope.get_config("Setting configuration for overview", "overview_logo.png")
     img = microscope.get_overview(config, name=overview_name)
-    points = get_points(img, at_least_n, " subregions within the overview")
-    regions = utils.points2regions(points, microscope.get_pixelsize(config), microscope.get_resolution(config))
     x_offset, y_offset = microscope.get_offsets(config)
+    # import pdb; pdb.set_trace()
+    pixelsize = microscope.get_pixelsize(config)
+    resolution = microscope.get_resolution(config)
+    points = get_points(img, at_least_n, " subregions within the overview", pixelsize=pixelsize, x_offset=x_offset, y_offset=y_offset, resolution=resolution)
+    regions = utils.points2regions(points, pixelsize, resolution)
+
     regions_offset = [(x + x_offset, y + y_offset) for (x, y) in regions]
     return regions_offset
 
-def select(thetas, objectives, with_time, times, figsize=(10, 10), borders=None, cmap=None, **kwargs):
+def select(thetas, objectives, with_time, times, figsize=(10, 10), borders=None):
     """Asks the user to select the best option by clicking on the points from the
     :mod:`matplotlib` figure. If several points overlap, select the one that minimizes
     the time (or third objective).
@@ -230,8 +272,7 @@ def select(thetas, objectives, with_time, times, figsize=(10, 10), borders=None,
 
     # set to your favorite colormap (see https://matplotlib.org/users/colormaps.html)
 #    cmap = pyplot.cm.get_cmap("nipy_spectral")
-    if isinstance(cmap, type(None)):
-        cmap = pyplot.cm.get_cmap("cividis")
+    cmap = pyplot.cm.get_cmap("jet")
 
     if with_time:
         title = ax.set_title(f"Pick the best option by clicking on the point. Tmin={numpy.min(times)}, Tmax={numpy.max(times)}")
@@ -241,17 +282,20 @@ def select(thetas, objectives, with_time, times, figsize=(10, 10), borders=None,
     # 3 points tolerance
     if with_time:
         time_range = times.max() - times.min() + 1e-11
+
+
     if len(thetas)==3:
         if with_time:
-            sc = ax.scatter(thetas[0], thetas[1], s=(times-times.min())/time_range * 60 + 20, c=thetas[2], marker="o", alpha=0.5, picker=3, cmap=cmap, **kwargs)
+            sc = ax.scatter(thetas[0], thetas[1], s=(times-times.min())/time_range * 60 + 20, c=thetas[2], marker="o", alpha=0.5, picker=3, cmap=cmap)
         else:
-            sc = ax.scatter(thetas[0], thetas[1], c=thetas[2], marker="o", alpha=0.5, picker=3, cmap=cmap, **kwargs)
+            sc = ax.scatter(thetas[0], thetas[1], c=thetas[2], marker="o", alpha=0.5, picker=3, cmap=cmap)
         pyplot.colorbar(sc, ax=ax)
     elif len(thetas)==2:
         if with_time:
             sc = ax.scatter(thetas[0], thetas[1], s=(times-times.min())/time_range * 60 + 20, marker="o", alpha=0.5, picker=3)
         else:
             sc = ax.scatter(thetas[0], thetas[1], marker="o", alpha=0.5, picker=3)
+    ax.grid(True)
     if borders is not None:
         xmin, xmax = borders[0]
         delta = xmax-xmin
@@ -259,7 +303,10 @@ def select(thetas, objectives, with_time, times, figsize=(10, 10), borders=None,
         xmin, xmax = borders[1]
         delta = xmax-xmin
         ax.set_ylim(xmin-0.1*delta, xmax+0.1*delta)
-        sc.set_clim(borders[2])
+        if len(borders) >=3:
+            sc.set_clim(borders[2])
+
+
     else:
 #            pyplot.sca(ax)
 #            pyplot.axis('tight')

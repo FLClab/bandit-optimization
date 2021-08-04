@@ -250,7 +250,7 @@ class FRC(Objective):
 
 
 class Resolution(Objective):
-    def __init__(self, pixelsize, res_cap=250):
+    def __init__(self, pixelsize, res_cap=350):
         self.label = "Resolution (nm)"
         self.select_optimal = numpy.argmin
         self.pixelsize = pixelsize
