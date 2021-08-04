@@ -114,7 +114,14 @@ class sklearn_BayesRidge(BayesianRidge):
                  tol=1e-6, fit_intercept=False,
                  compute_score=True,alpha_init=None,
                  lambda_init=None,
-                 alpha_1=1e-06, alpha_2=1e-06, lambda_1=1e-06, lambda_2=1e-06, **kwargs):
+                 alpha_1=1e-06, alpha_2=1e-06, lambda_1=1e-06, lambda_2=1e-06,
+                 N0_w=None, std0_w=None, N0_n=None, std0_n=None,
+                 **kwargs):
+        if (N0_w is not None) or (std0_w is not None) or (N0_n is not None) or (std0_n is not None):
+            lambda_1 = N0_w/2
+            lambda_2 = lambda_1*std0_w**2
+            alpha_1 = N0_n/2
+            alpha_2 = alpha_1*std0_n**2
         super().__init__(tol=tol, fit_intercept=fit_intercept,
                          compute_score=compute_score, alpha_init=alpha_init,
                          lambda_init=lambda_init,
