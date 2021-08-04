@@ -207,7 +207,7 @@ def run_TS(config, save_folder="debug_trial", regressor_name="sklearn_BayesRidge
                 else:
                     sampled_MO_function_obj = algorithms.MO_function_sample(algos, with_time, param_names)
                     sampled_MO_function = sampled_MO_function_obj.evaluate
-                    nsga_weigts = [-1 if obj_dict[obj_name]==np.argmin else +1  for obj_name in obj_names]
+                    nsga_weigts = [-1 if obj_dict[obj_name].select_optimal==np.argmin else +1  for obj_name in obj_names]
                     if with_time:
                         nsga_weigts += [-1]
                     print("Calculating the pareto front with NSGA-II...")

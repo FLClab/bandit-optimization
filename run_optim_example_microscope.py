@@ -11,14 +11,14 @@ x_maxs=[40, 75,]
 degree = 3
 
 obj_names=["Resolution", "Bleach", 'SNR']
-borders = {"Resolution":(0,350), "Bleach":(0,1), "SNR":(0,10)} #WARNING: this should be in the same order as obj_names
-# obj_names=["Resolution", 'Bleach']
-# borders = {"Resolution":(0,350), "Bleach":(0,1)} #WARNING: this should be in the same order as obj_names
-# param_names = ["p_ex", "p_sted", "dwelltime"]
+borders = {"Resolution":(0,350), "Bleach":(0,1), "SNR":(0,6)} #WARNING: this should be in the same order as obj_names
+# obj_names=["Bleach", 'SNR']
+# borders = {"Bleach":(0,1), "SNR":(0,10)} #WARNING: this should be in the same order as obj_names
+
 param_names = ["p_ex", "p_sted"]
 
 config =  dict(
-    save_folder=f"../bandit-optimization-experiments/2020-08-03-mult_params/params{len(x_mins)}_deg{degree}_{''.join([name[0] for name in param_names])}_{''.join([name[0] for name in obj_names])}_practice2",
+    save_folder=f"../bandit-optimization-experiments/2020-08-04-mult_params/params{len(x_mins)}_deg{degree}_{''.join([name[0] for name in param_names])}_{''.join([name[0] for name in obj_names])}_practice3",
     regressor_name="sklearn_BayesRidge",
     regressor_args= {
         "default":{
@@ -29,10 +29,7 @@ config =  dict(
         "Bleach":{"N0_w":1, "std0_w":borders["Bleach"][1]-borders["Bleach"][0], "N0_n":1, "std0_n":(borders["Bleach"][1]-borders["Bleach"][0])/5},
         "SNR":{"N0_w":1, "std0_w":borders["SNR"][1]-borders["SNR"][0], "N0_n":1, "std0_n":(borders["SNR"][1]-borders["SNR"][0])/5},
     },
-     # n_divs_default = 10, #20**3 = 8000
-#    n_points = [10, 10, 10, 10],
     param_names = param_names,
-    # param_names = ["p_ex"],
     with_time=False,
     default_values_dict=dict(
         p_ex = 4,
@@ -47,7 +44,7 @@ config =  dict(
     obj_names=obj_names,
     # obj_names=["SNR", "Bleach", ],
     optim_length = 150,
-    nbre_trials = 1,
+    nbre_trials = 5,
     borders = list(borders.values()),
     # borders = None,
     pareto_only = True,
