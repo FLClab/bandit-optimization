@@ -294,7 +294,7 @@ class Squirrel(Objective):
         """
         # Optimize
         if not numpy.any(sted_stack[0]):
-            return mean_squared_error(conf_stack[conf_fg], sted_stack[0][conf_fg], squared=True)
+            return mean_squared_error(confocal_init[confocal_fg], sted_stack[0][confocal_fg], squared=True)
         # Optimize
         result = self.optimize(sted_stack[0], confocal_init)
         return self.squirrel(result.x, sted_stack[0], confocal_init)
