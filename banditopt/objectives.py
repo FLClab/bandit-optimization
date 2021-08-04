@@ -293,6 +293,9 @@ class Squirrel(Objective):
                             (2d array of bool: True on foreground, False on background).
         """
         # Optimize
+        if not numpy.any(sted_stack[0]):
+            return mean_squared_error(conf_stack[conf_fg], sted_stack[0][conf_fg], squared=True)
+        # Optimize
         result = self.optimize(sted_stack[0], confocal_init)
         return self.squirrel(result.x, sted_stack[0], confocal_init)
 
@@ -306,7 +309,7 @@ class Squirrel(Objective):
         if self.normalize:
             reference = (reference - reference.min()) / (reference.max() - reference.min() + 1e-9)
             convolved = (convolved - convolved.min()) / (convolved.max() - convolved.min() + 1e-9)
-        error = mean_squared_error(reference, convolved, squared=False)
+        error = mean_squared_error(reference, convolved, squared=True)
         return error
 
     def optimize(self, super_resolution, reference):
