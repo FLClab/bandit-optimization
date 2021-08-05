@@ -110,6 +110,9 @@ def run_TS(config, save_folder="debug_trial", regressor_name="sklearn_BayesRidge
         yaml.dump(config, f)
 
     im_dir_names = ["conf1", "sted", "conf2", "fluomap","X_sample",  "y_samples", "pareto_indexes"]
+    if "pixelsize" in param_names:
+        im_dir_names += ["conf0"]
+        config_conf_varpixel = microscope.get_config("Setting confocal configuration.", "conf_varpixel_logo.png")
     if split_sted_params is not None:
         im_dir_names.append("sted_stack")
     for dir_name in im_dir_names:
@@ -266,9 +269,15 @@ def run_TS(config, save_folder="debug_trial", regressor_name="sklearn_BayesRidge
             print('print(x, y)',x, y)
             print('print(regions)', regions)
             microscope.set_offsets(config_conf, x, y)
+            if "pixelsize" in param_names:
+                microscope.set_offsets(config_conf_varpixel, x, y)
             microscope.set_offsets(config_sted, x, y)
             # Acquire conf1, sted_image, conf2
 
+            if "pixelsize" in param_names:
+                stacks, _ = microscope.acquire(config_conf_varpixel)
+                conf0 = stacks[0][0]
+                skio.imsave(os.path.join(save_folder, "conf0",str(no_trial), str(iter_idx)+".tiff"), conf0, check_contrast=False)
             stacks, _ = microscope.acquire(config_conf)
             conf1 = stacks[0][0]
             skio.imsave(os.path.join(save_folder, "conf1",str(no_trial), str(iter_idx)+".tiff"), conf1, check_contrast=False)
@@ -299,6 +308,7 @@ def run_TS(config, save_folder="debug_trial", regressor_name="sklearn_BayesRidge
             stacks, _ = microscope.acquire(config_conf)
             conf2 = stacks[0][0]
             skio.imsave(os.path.join(save_folder, "conf2",str(no_trial), str(iter_idx)+".tiff"), conf2, check_contrast=False)
+            
 
 
 
@@ -314,7 +324,10 @@ def run_TS(config, save_folder="debug_trial", regressor_name="sklearn_BayesRidge
             else:
                 fg_s = np.ones_like(sted_image)
             # remove STED foreground points not in confocal foreground, if any
-            fg_s *= fg_c
+            if "pixelsize" in param_names:
+                fg_s *= utils.get_foreground(conf0)
+            else:
+                fg_s *= fg_c
 
             # Evaluate the objective results
             if "Resolution" in obj_names:
