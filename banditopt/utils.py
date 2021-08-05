@@ -398,7 +398,7 @@ def uniform(low, up, size=None):
 def NSGAII(optim_func, BOUND_LOW, BOUND_UP, weights, NGEN=250, MU=100,
            CXPB=0.9, eta_cx=20.0, eta_mu=20.0, indpb_nom = 1,
            L = 6, min_std=None, seed=None, prnt=False, return_niter=True,
-           conditions=[]):
+           conditions=[], integer_params=[], param_names=None):
     """
     ---- Problem parameters ----
     param optim_func:   Function to optimize
@@ -417,6 +417,7 @@ def NSGAII(optim_func, BOUND_LOW, BOUND_UP, weights, NGEN=250, MU=100,
     param min_std:      If not None, threshold under which the algorithm is stopped
     param conditions:   A `list` of conditions
     """
+    
     def _max(x):
         x = numpy.array(x)
         where = x != numpy.inf
@@ -457,7 +458,7 @@ def NSGAII(optim_func, BOUND_LOW, BOUND_UP, weights, NGEN=250, MU=100,
         toolbox.register("attr_float", uniform, BOUND_LOW, BOUND_UP, NDIM)
     toolbox.register("individual", tools.initIterate, creator.Individual, toolbox.attr_float)
     toolbox.register("population", tools.initRepeat, list, toolbox.individual)
-    toolbox.register("evaluate", optim_func)
+#    toolbox.register("evaluate", optim_func)
     toolbox.register("mate", tools.cxSimulatedBinaryBounded, low=BOUND_LOW, up=BOUND_UP, eta=eta_cx)
     toolbox.register("mutate", tools.mutPolynomialBounded, low=BOUND_LOW, up=BOUND_UP, eta=eta_mu, indpb=indpb)
     toolbox.register("select", tools.selNSGA2)
@@ -480,7 +481,7 @@ def NSGAII(optim_func, BOUND_LOW, BOUND_UP, weights, NGEN=250, MU=100,
 
     # Evaluate the individuals with an invalid fitness
     invalid_ind = [ind for ind in pop if not ind.fitness.valid]
-    fitnesses = optim_func(invalid_ind)
+    fitnesses = optim_func(invalid_ind, params_to_round=integer_params)
     for ind, fit in zip(invalid_ind, fitnesses):
         ind.fitness.values = fit
 
@@ -513,7 +514,7 @@ def NSGAII(optim_func, BOUND_LOW, BOUND_UP, weights, NGEN=250, MU=100,
 
         # Evaluate the individuals with an invalid fitness
         invalid_ind = [ind for ind in offspring if not ind.fitness.valid]
-        fitnesses = optim_func(invalid_ind)
+        fitnesses = optim_func(invalid_ind, params_to_round=integer_params)
         for ind, fit in zip(invalid_ind, fitnesses):
             ind.fitness.values = fit
 
@@ -531,7 +532,10 @@ def NSGAII(optim_func, BOUND_LOW, BOUND_UP, weights, NGEN=250, MU=100,
             if (min_std is not None) and (std < min_std):
                 # Stop the optimization
                 break
-
+    
+    X = numpy.array(tools.sortLogNondominated(pop, len(pop),first_front_only=True))
+    for param in integer_params:
+        X[:, param_names.index(param)] = numpy.round(X[:, param_names.index(param)])
 
     del creator.FitnessMin
     del creator.Individual
@@ -539,6 +543,6 @@ def NSGAII(optim_func, BOUND_LOW, BOUND_UP, weights, NGEN=250, MU=100,
         print("Final population hypervolume is %f" % hypervolume(pop, [11.0]*len(weights)))
 
     if return_niter:
-        return numpy.array(tools.sortLogNondominated(pop, len(pop),first_front_only=True)), pd.DataFrame(logbook), gen+1
+        return X, pd.DataFrame(logbook), gen+1
     else:
-        return numpy.array(tools.sortLogNondominated(pop, len(pop),first_front_only=True)), pd.DataFrame(logbook)
+        return X, pd.DataFrame(logbook)

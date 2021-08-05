@@ -36,8 +36,10 @@ class MO_function_sample():
         self.with_time = with_time
         self.param_names = param_names
 
-    def evaluate(self, individuals):
+    def evaluate(self, individuals, params_to_round=[]):
         X = numpy.array(individuals)
+        for param in params_to_round:
+            X[:, self.param_names.index(param)] = numpy.round(X[:, self.param_names.index(param)])
         ys = numpy.array([self.algos[i].sample(X, seed=self.seeds[i]) for i in range(len(self.algos))]).squeeze(axis=-1)
         if self.with_time:
             dwelltime_pos = list(X.flatten()).index('dwelltime')

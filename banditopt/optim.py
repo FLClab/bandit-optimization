@@ -1,10 +1,10 @@
 from shutil import copyfile
 
 import skimage.io as skio
-try:
-    import pygmo
-except ImportError:
-    print("Pygmo is not installed")
+# try:
+#     import pygmo
+# except ImportError:
+#     print("Pygmo is not installed")
 
 import os
 import time
@@ -14,7 +14,7 @@ import platform
 
 from . import algorithms, objectives, user, utils
 from .algorithms import TS_sampler
-from . import simulate_image as simulation
+# from . import simulate_image as simulation
 
 # Define the objectives and regressors here
 obj_dict = {"SNR":objectives.Signal_Ratio(75),"Bleach":objectives.Bleach(), "Resolution":objectives.Resolution(pixelsize=None), }

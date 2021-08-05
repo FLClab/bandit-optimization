@@ -5,7 +5,7 @@ import plotly.graph_objects as go
 import pandas as pd
 import random as python_random
 
-from .hmc import monte_carlo_pred
+# from .hmc import monte_carlo_pred
 
 
 def slice_plot_data(config, X, Y, point_idx=0, axis=0, obj=0, n_samples=100, ndivs=100):

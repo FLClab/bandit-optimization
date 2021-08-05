@@ -1,24 +1,21 @@
 import banditopt.optim_microscope as optim
 import numpy as np
 
-x_mins=[0.2, 1,]
-x_maxs=[40, 75,]
-# x_mins = [1]
-# x_maxs = [75]
-# x_mins=[0.2, 1]
-# x_maxs=[40, 75]
+x_mins=[0.2, 1, 2, 0.5]
+x_maxs=[40, 75, 100, 10.5]
+
+
 
 degree = 3
 
 obj_names=["Resolution", "Bleach", 'SNR']
 borders = {"Resolution":(0,350), "Bleach":(0,1), "SNR":(0,6)} #WARNING: this should be in the same order as obj_names
-# obj_names=["Bleach", 'SNR']
-# borders = {"Bleach":(0,1), "SNR":(0,10)} #WARNING: this should be in the same order as obj_names
 
-param_names = ["p_ex", "p_sted"]
+
+param_names = ["p_ex", "p_sted", "dwelltime", "line_step"]
 
 config =  dict(
-    save_folder=f"../bandit-optimization-experiments/2020-08-04-mult_params/params{len(x_mins)}_deg{degree}_{''.join([name[0] for name in param_names])}_{''.join([name[0] for name in obj_names])}_practice3",
+    save_folder=f"../bandit-optimization-experiments/2020-08-04-mult_params/params{len(x_mins)}_deg{degree}_{''.join([name[0] for name in param_names])}_{''.join([name[0] for name in obj_names])}",
     regressor_name="sklearn_BayesRidge",
     regressor_args= {
         "default":{
@@ -50,7 +47,9 @@ config =  dict(
     pareto_only = True,
     # time_limit = 500e-6, #total_time/nbre_pixels
     time_limit = None,
-    NSGAII_kwargs = dict(NGEN=250, MU=100, L = 40, min_std=np.sqrt(2e-4*len(obj_names)))
+#    NSGAII_kwargs = dict(NGEN=250, MU=100, L = 40, min_std=np.sqrt(2e-4*len(obj_names)))
+    NSGAII_kwargs = dict(NGEN=250, MU=100, L = 40, min_std=np.sqrt(2e-4*len(obj_names)), integer_params='line_step', param_names=param_names)
+
     # pareto_option = None,
               )
 
