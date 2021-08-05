@@ -44,13 +44,13 @@ class MO_function_sample():
             X[:, self.param_names.index(param)] = numpy.round(X[:, self.param_names.index(param)])
         ys = numpy.array([self.algos[i].sample(X, seed=self.seeds[i]) for i in range(len(self.algos))]).squeeze(axis=-1)
         if self.time_limit is not None:
-            pixeltimes = X[:, param_names.index("dwelltime")] * X[:, param_names.index("line_step")]
-            for i, bounds in enumerate(borders):
+            pixeltimes = X[:, self.param_names.index("dwelltime")] * X[:, self.param_names.index("line_step")]
+            for i, bounds in enumerate(self.borders):
                 if weights[i] < 0:
                     ys[i, :][pixeltimes > self.time_limit] = bounds[1] + (bounds[1]-bounds[0])*1.5
                 elif weights[i] > 0:
                     ys[i, :][pixeltimes > self.time_limit] = bounds[0] - (bounds[1]-bounds[0])*1.5
-            
+
         if self.with_time:
             dwelltime_pos = list(X.flatten()).index('dwelltime')
             return tuple(ys + X[dwelltime_pos])
