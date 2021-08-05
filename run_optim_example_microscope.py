@@ -1,8 +1,8 @@
 import banditopt.optim_microscope as optim
 import numpy as np
 
-x_mins=[0.2, 1, 2, 0.5]
-x_maxs=[40, 75, 100, 10.5]
+x_mins=[0.2, 1, 2e-6, 0.5]
+x_maxs=[40, 75, 100e-6, 10.5]
 
 
 
@@ -45,10 +45,10 @@ config =  dict(
     borders = list(borders.values()),
     # borders = None,
     pareto_only = True,
-    # time_limit = 500e-6, #total_time/nbre_pixels
-    time_limit = None,
+    time_limit = 500e-6, #total_time/nbre_pixels
+    # time_limit = None,
 #    NSGAII_kwargs = dict(NGEN=250, MU=100, L = 40, min_std=np.sqrt(2e-4*len(obj_names)))
-    NSGAII_kwargs = dict(NGEN=250, MU=100, L = 40, min_std=np.sqrt(2e-4*len(obj_names)), integer_params='line_step', param_names=param_names)
+    NSGAII_kwargs = dict(NGEN=250, MU=100, L = 40, min_std=np.sqrt(2e-4*len(obj_names)), integer_params=['line_step'], param_names=param_names)
 
     # pareto_option = None,
               )

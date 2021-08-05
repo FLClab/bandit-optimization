@@ -292,6 +292,9 @@ def set_linestep(conf, linestep, step_id):
     :param linestep: Line step.
     :param step_id: ID of the line step in Imspector (starting from 0).
     '''
+    if numpy.round(linestep) != linestep:
+        linestep = numpy.round(linestep)
+        print("WARNING!!!!!!!!!!!!!!!!!! THE LINESTEP WAS JUST ROUNDED FROM A FLOAT VALUE !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
     conf.set_parameters("ExpControl/measurement/line_steps/repetitions", linestep)
 
 

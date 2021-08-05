@@ -202,7 +202,11 @@ def run_TS(config, save_folder="debug_trial", regressor_name="sklearn_BayesRidge
             elif pareto_option == 'nsga':
                 # Select a point
                 if iter_idx==0:
-                    x_selected = np.random.uniform(x_mins, x_maxs)[:, np.newaxis]
+                    time_pred=np.inf
+                    while time_pred>time_limit:
+                        x_selected = np.random.uniform(x_mins, x_maxs)[:, np.newaxis]
+                        time_pred = x_selected[param_names.index("dwelltime")]*x_selected[param_names.index("line_step")]
+                        print(time_pred, time_limit, time_pred>time_limit)
                     dt_sampling = 0
                 else:
                     sampled_MO_function_obj = algorithms.MO_function_sample(algos, with_time, param_names)
