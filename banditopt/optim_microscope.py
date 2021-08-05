@@ -209,7 +209,7 @@ def run_TS(config, save_folder="debug_trial", regressor_name="sklearn_BayesRidge
                         print(time_pred, time_limit, time_pred>time_limit)
                     dt_sampling = 0
                 else:
-                    sampled_MO_function_obj = algorithms.MO_function_sample(algos, with_time, param_names)
+                    sampled_MO_function_obj = algorithms.MO_function_sample(algos, with_time, param_names, time_limit=time_limit, borders=borders)
                     sampled_MO_function = sampled_MO_function_obj.evaluate
                     nsga_weigts = [-1 if obj_dict[obj_name].select_optimal==np.argmin else +1  for obj_name in obj_names]
                     if with_time:

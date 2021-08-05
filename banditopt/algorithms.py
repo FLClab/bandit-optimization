@@ -30,17 +30,27 @@ class MO_function_sample():
 
     individual: an array like object with parameter values
     """
-    def __init__(self, algos, with_time, param_names):
+    def __init__(self, algos, with_time, param_names, time_limit=None, borders=None):
         self.seeds = [np.random.randint(2**31) for i in range(len(algos))]
         self.algos = algos
         self.with_time = with_time
+        self.time_limit = time_limit
+        self.borders = borders
         self.param_names = param_names
 
-    def evaluate(self, individuals, params_to_round=[]):
+    def evaluate(self, individuals, params_to_round=[], weights=None):
         X = numpy.array(individuals)
         for param in params_to_round:
             X[:, self.param_names.index(param)] = numpy.round(X[:, self.param_names.index(param)])
         ys = numpy.array([self.algos[i].sample(X, seed=self.seeds[i]) for i in range(len(self.algos))]).squeeze(axis=-1)
+        if self.time_limit is not None:
+            pixeltimes = X[:, param_names.index("dwelltime")] * X[:, param_names.index("line_step")]
+            for i, bounds in enumerate(borders):
+                if weights[i] < 0:
+                    ys[i, :][pixeltimes > self.time_limit] = bounds[1] + (bounds[1]-bounds[0])*1.5
+                elif weights[i] > 0:
+                    ys[i, :][pixeltimes > self.time_limit] = bounds[0] - (bounds[1]-bounds[0])*1.5
+            
         if self.with_time:
             dwelltime_pos = list(X.flatten()).index('dwelltime')
             return tuple(ys + X[dwelltime_pos])

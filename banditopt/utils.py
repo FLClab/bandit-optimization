@@ -481,7 +481,7 @@ def NSGAII(optim_func, BOUND_LOW, BOUND_UP, weights, NGEN=250, MU=100,
 
     # Evaluate the individuals with an invalid fitness
     invalid_ind = [ind for ind in pop if not ind.fitness.valid]
-    fitnesses = optim_func(invalid_ind, params_to_round=integer_params)
+    fitnesses = optim_func(invalid_ind, params_to_round=integer_params, weights=weights)
     for ind, fit in zip(invalid_ind, fitnesses):
         ind.fitness.values = fit
 
@@ -514,7 +514,7 @@ def NSGAII(optim_func, BOUND_LOW, BOUND_UP, weights, NGEN=250, MU=100,
 
         # Evaluate the individuals with an invalid fitness
         invalid_ind = [ind for ind in offspring if not ind.fitness.valid]
-        fitnesses = optim_func(invalid_ind, params_to_round=integer_params)
+        fitnesses = optim_func(invalid_ind, params_to_round=integer_params, weights=weights)
         for ind, fit in zip(invalid_ind, fitnesses):
             ind.fitness.values = fit
 
