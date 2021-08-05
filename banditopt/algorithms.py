@@ -44,7 +44,7 @@ class MO_function_sample():
             X[:, self.param_names.index(param)] = numpy.round(X[:, self.param_names.index(param)])
         ys = numpy.array([self.algos[i].sample(X, seed=self.seeds[i]) for i in range(len(self.algos))]).squeeze(axis=-1)
         if self.time_limit is not None:
-            pixeltimes = X[:, self.param_names.index("dwelltime")] * X[:, self.param_names.index("line_step")]
+            pixeltimes = X[:, self.param_names.index("dwelltime")] * X[:, self.param_names.index("line_step")] * X[:, self.param_names.index("pixelsize")]**2/(20e-9)**2 
             for i, bounds in enumerate(self.borders):
                 if weights[i] < 0:
                     ys[i, :][pixeltimes > self.time_limit] = bounds[1] + (bounds[1]-bounds[0])*1.5

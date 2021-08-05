@@ -1,8 +1,8 @@
 import banditopt.optim_microscope as optim
 import numpy as np
 
-x_mins=[0.2, 1, 2e-6, 0.5]
-x_maxs=[40, 75, 100e-6, 10.5]
+x_mins=[0.2, 1, 2e-6, 0.5, 10e-9]
+x_maxs=[40, 75, 100e-6, 10.5, 30e-9]
 
 
 
@@ -12,7 +12,7 @@ obj_names=["Resolution", "Bleach", 'SNR']
 borders = {"Resolution":(0,350), "Bleach":(0,1), "SNR":(0,6)} #WARNING: this should be in the same order as obj_names
 
 
-param_names = ["p_ex", "p_sted", "dwelltime", "line_step"]
+param_names = ["p_ex", "p_sted", "dwelltime", "line_step", "pixelsize"]
 
 config =  dict(
     save_folder=f"../bandit-optimization-experiments/2020-08-04-mult_params/params{len(x_mins)}_deg{degree}_{''.join([name[0] for name in param_names])}_{''.join([name[0] for name in obj_names])}",

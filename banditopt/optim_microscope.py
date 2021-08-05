@@ -76,9 +76,11 @@ def run_TS(config, save_folder="debug_trial", regressor_name="sklearn_BayesRidge
               for tradeoff selection
     """
 
+
     # Set the default sted parameters
     for name, value in default_values_dict.items():
         params_set[name](config_sted, float(value))
+
 
 
     ndims = len(param_names)
@@ -144,6 +146,7 @@ def run_TS(config, save_folder="debug_trial", regressor_name="sklearn_BayesRidge
         #     regions += user.get_regions(config=config_overview, overview_name='640 {0}')
 
         config_overview = microscope.get_config("Setting STED configuration.", 'overview_logo.png')
+        import pdb; pdb.set_trace()
         regions = user.get_regions(config=config_overview, overview_name='640 {0}')
         regions.reverse()
 
@@ -166,7 +169,7 @@ def run_TS(config, save_folder="debug_trial", regressor_name="sklearn_BayesRidge
                 else:
                     #TODO: I should correct those condition for more generality
                     if 'line_step' in param_names:
-                        timesperpixel = X[:,param_names.index("dwelltime")]*X[:,param_names.index("line_step")]
+                        timesperpixel = X[:,param_names.index("dwelltime")]*X[:,param_names.index("line_step")]*X[:,param_names.index("pixelsize")]**2/(20e-9)**2
                     else:
                         timesperpixel = X[:,param_names.index("dwelltime")]
 
@@ -208,7 +211,7 @@ def run_TS(config, save_folder="debug_trial", regressor_name="sklearn_BayesRidge
                     time_pred=np.inf
                     while time_pred>time_limit:
                         x_selected = np.random.uniform(x_mins, x_maxs)[:, np.newaxis]
-                        time_pred = x_selected[param_names.index("dwelltime")]*x_selected[param_names.index("line_step")]
+                        time_pred = x_selected[param_names.index("dwelltime")]*x_selected[param_names.index("line_step")] * x_selected[param_names.index("pixelsize")]**2/(20e-9)**2
                         print(time_pred, time_limit, time_pred>time_limit)
                     dt_sampling = 0
                 else:
@@ -227,7 +230,7 @@ def run_TS(config, save_folder="debug_trial", regressor_name="sklearn_BayesRidge
 
                     if time_limit is not None:
                         if 'line_step' in param_names:
-                            timesperpixel = X_sample[:,param_names.index("dwelltime")]*X_sample[:,param_names.index("line_step")]
+                            timesperpixel = X_sample[:,param_names.index("dwelltime")]*X_sample[:,param_names.index("line_step")]*X_sample[:,param_names.index("pixelsize")]**2/(20e-9)**2
                         else:
                             timesperpixel = X_sample[:,param_names.index("dwelltime")]
                         X_sample = X_sample[timesperpixel<=time_limit]
@@ -275,6 +278,7 @@ def run_TS(config, save_folder="debug_trial", regressor_name="sklearn_BayesRidge
             # Acquire conf1, sted_image, conf2
 
             if "pixelsize" in param_names:
+                params_set["pixelsize"](config_conf_varpixel, float(x_selected[param_names.index('pixelsize')]))
                 stacks, _ = microscope.acquire(config_conf_varpixel)
                 conf0 = stacks[0][0]
                 skio.imsave(os.path.join(save_folder, "conf0",str(no_trial), str(iter_idx)+".tiff"), conf0, check_contrast=False)
@@ -308,7 +312,7 @@ def run_TS(config, save_folder="debug_trial", regressor_name="sklearn_BayesRidge
             stacks, _ = microscope.acquire(config_conf)
             conf2 = stacks[0][0]
             skio.imsave(os.path.join(save_folder, "conf2",str(no_trial), str(iter_idx)+".tiff"), conf2, check_contrast=False)
-            
+
 
 
 
@@ -331,7 +335,10 @@ def run_TS(config, save_folder="debug_trial", regressor_name="sklearn_BayesRidge
 
             # Evaluate the objective results
             if "Resolution" in obj_names:
-                obj_dict["Resolution"] = objectives.Resolution(pixelsize=default_values_dict["pixelsize"], res_cap=borders[obj_names.index("Resolution")][1]) #Just in case the pixelsize have changed
+                if "pixelsize" in param_names:
+                    obj_dict["Resolution"] = objectives.Resolution(pixelsize=x_selected[param_names.index('pixelsize')], res_cap=borders[obj_names.index("Resolution")][1]) #Just in case the pixelsize have changed
+                else:
+                    obj_dict["Resolution"] = objectives.Resolution(pixelsize=default_values_dict["pixelsize"], res_cap=borders[obj_names.index("Resolution")][1]) #Just in case the pixelsize have changed
             y_result = np.array([obj_dict[name].evaluate([sted_image], conf1, conf2, fg_s, fg_c) for name in obj_names])
             print(x_selected.T, y_result)
 
