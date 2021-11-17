@@ -30,7 +30,7 @@ class Objective(ABC):
     function :func:`evaluate` to be called during optimization.
     """
     @abstractmethod
-    def evaluate(self, sted_stack, confocal_init, confocal_end, sted_fg, confocal_fg):
+    def evaluate(self, sted_stack, confocal_init, confocal_end, sted_fg, confocal_fg, *args, **kwargs):
         """Compute the value of the objective given the result of an acquisition.
 
         :param sted_stack: A list of STED images.
@@ -72,7 +72,7 @@ class Signal_Ratio(Objective):
         self.select_optimal = numpy.argmax
         self.percentile = percentile
 
-    def evaluate(self, sted_stack, confocal_init, confocal_end, sted_fg, confocal_fg):
+    def evaluate(self, sted_stack, confocal_init, confocal_end, sted_fg, confocal_fg, *args, **kwargs):
         """Compute the signal to noise ratio (SNR) given the result of an acquisition.
 
         :param sted_stack: A list of STED images.
@@ -119,7 +119,7 @@ class FWHM(Objective):
         self.pixelsize = pixelsize
         self.kwargs = kwargs
 
-    def evaluate(self, sted_stack, confocal_init, confocal_end, sted_fg, confocal_fg):
+    def evaluate(self, sted_stack, confocal_init, confocal_end, sted_fg, confocal_fg, *args, **kwargs):
         """Compute the full width at half maximum (FWHM) given the result of an acquisition.
         It relies on the function :func:`user.get_lines` to request the user to select line
         profiles in the first STED image of the stack. If the user does not select any lines
@@ -160,7 +160,7 @@ class Autocorrelation(Objective):
         self.select_optimal = numpy.argmax
         self.kwargs = kwargs
 
-    def evaluate(self, sted_stack, confocal_init, confocal_end, sted_fg, confocal_fg):
+    def evaluate(self, sted_stack, confocal_init, confocal_end, sted_fg, confocal_fg, *args, **kwargs):
         lines = user.get_lines(sted_stack[0], minlen=40, deltas=[-1, 0, 1], **self.kwargs)
         profiles = [l[1] for l in lines]
         autocorr = acf(profiles)
@@ -186,7 +186,7 @@ class Score(Objective):
         self.idx = idx
         self.kwargs = kwargs
 
-    def evaluate(self, sted_stack, confocal_init, confocal_end, sted_fg, confocal_fg):
+    def evaluate(self, sted_stack, confocal_init, confocal_end, sted_fg, confocal_fg, *args, **kwargs):
         return user.give_score(confocal_init, sted_stack[self.idx], self.label, **self.kwargs)
 
 
@@ -195,7 +195,7 @@ class Bleach(Objective):
         self.label = "Bleach"
         self.select_optimal = numpy.argmin
 
-    def evaluate(self, sted_stack, confocal_init, confocal_end, sted_fg, confocal_fg):
+    def evaluate(self, sted_stack, confocal_init, confocal_end, sted_fg, confocal_fg, *args, **kwargs):
         signal_i = numpy.mean(confocal_init[confocal_fg])
         signal_e = numpy.mean(confocal_end[confocal_fg])
         bleach = (signal_i - signal_e) / signal_i
@@ -209,7 +209,7 @@ class ScoreNet(Objective):
         self.select_optimal = select_optimal
         self.idx = idx
 
-    def evaluate(self, sted_stack, confocal_init, confocal_end, sted_fg, confocal_fg):
+    def evaluate(self, sted_stack, confocal_init, confocal_end, sted_fg, confocal_fg, *args, **kwargs):
         score = self.net.predict(utils.img2float(sted_stack[self.idx]))
         print("Net", self.label, "score", score)
         return score
@@ -222,7 +222,7 @@ class FRC(Objective):
         self.pixelsize = pixelsize # µm
         self.max_spatialfreq = 1 / (2 * pixelsize) # 1/µm
 
-    def evaluate(self, sted_stack, confocal_init, confocal_end, sted_fg, confocal_fg):
+    def evaluate(self, sted_stack, confocal_init, confocal_end, sted_fg, confocal_fg, *args, **kwargs):
         sted = numpy.array(sted_stack[0])
         # verify that the STED image is of squared shape
         assert sted.shape[0] == sted.shape[1],\
@@ -257,13 +257,71 @@ class Resolution(Objective):
 #            self.kwargs = kwargs
         self.res_cap=res_cap
 
-    def evaluate(self, sted_stack, confocal_init, confocal_end, sted_fg, confocal_fg):
+    def evaluate(self, sted_stack, confocal_init, confocal_end, sted_fg, confocal_fg, *args, **kwargs):
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             res = decorr_res.decorr_res(image=sted_stack[0])*self.pixelsize/1e-9
         if res > self.res_cap:
             res = self.res_cap
         return res
+
+class FWHMResolution(Objective):
+    def __init__(self, pixelsize):
+        self.label = "FWHM (nm)"
+        self.select_optimal = numpy.argmin
+        self.pixelsize = pixelsize
+
+    def evaluate(self, sted_stack, confocal_init, confocal_end, sted_fg, confocal_fg, *args, **kwargs):
+        positions = kwargs.get("positions", None)
+        return self.get_resolution(sted_stack[0], positions) * 1e+9
+
+    def get_resolution(self, emitter, positions, delta=4, avg=2):
+        """
+        Computes the resolution from center point in the image. A resolution of 0 is
+        returned if no signal is available.
+
+        :param emitter: A `numpy.ndarray` of emitter
+        :param delta: The center crop size
+        :param avg: The crop height
+
+        :returns : A `float` of the resolution of the image (FWHM)
+        """
+        def gaussian(x,a,x0,sigma):
+            return a*numpy.exp(-(x-x0)**2/(2*sigma**2))
+        def fit(func, x, y):
+            try:
+                popt, pcov = optimize.curve_fit(func, x, y, bounds=((-numpy.inf, -numpy.inf, 0), numpy.inf))
+                return min(popt[-1], delta)
+            except RuntimeError:
+                return None
+
+        # Returns the center resolution
+        if isinstance(positions, type(None)):
+            positions = [(emitter.shape[0] // 2, emitter.shape[1] // 2)]
+
+        # Calculates the resolutions
+        resolutions = []
+        for ypos, xpos in positions:
+            y = emitter[
+                max(0, ypos - avg) : min(ypos + avg, emitter.shape[0]),
+                max(0, xpos - delta) : min(xpos + delta, emitter.shape[1])
+            ].max(axis=0)
+            x = numpy.arange(len(y)) - numpy.argmax(y)
+
+            # We skip if there is no emitters
+            if numpy.all(numpy.diff(y) == 0):
+                continue
+            sigma = fit(gaussian, x, y)
+            # We skip if the fit did not converge
+            if isinstance(sigma, type(None)):
+                continue
+            resolutions.append(2 * numpy.sqrt(2 * numpy.log(2)) * sigma * self.pixelsize)
+        if resolutions:
+            # We return the average calculated resolution
+            return numpy.mean(resolutions)
+        else:
+            # We return the maximal resolution
+            return 2 * numpy.sqrt(2 * numpy.log(2)) * delta * self.pixelsize
 
 class Squirrel(Objective):
     """
@@ -280,7 +338,7 @@ class Squirrel(Objective):
         self.normalize = normalize
         self.select_optimal = numpy.argmin
 
-    def evaluate(self, sted_stack, confocal_init, confocal_end, sted_fg, confocal_fg):
+    def evaluate(self, sted_stack, confocal_init, confocal_end, sted_fg, confocal_fg, *args, **kwargs):
         """
         Evaluates the objective
 
