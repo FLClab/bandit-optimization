@@ -400,10 +400,10 @@ def select(thetas, objectives, with_time, times, figsize=(10, 10), borders=None)
         index = numpy.random.choice(candidates)
 
     fig.canvas.mpl_connect("pick_event", onpick)
-    pyplot.show(block=False)
-    while pyplot.waitforbuttonpress():
-        pass
-    pyplot.close()
+    pyplot.show(block=True)
+    # while pyplot.waitforbuttonpress():
+    #     pass
+    # pyplot.close()
     assert index is not None, "User did not pick any point!"
     return index
 

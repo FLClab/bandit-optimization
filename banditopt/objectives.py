@@ -330,13 +330,14 @@ class Squirrel(Objective):
     :param method: A `str` of the method used to optimize
     :param normalize: A `bool` wheter to normalize the images
     """
-    def __init__(self, method="L-BFGS-B", normalize=False):
+    def __init__(self, method="L-BFGS-B", normalize=False, use_foreground=False):
 
         self.method = method
         self.bounds = (-numpy.inf, numpy.inf), (-numpy.inf, numpy.inf), (0, numpy.inf)
         self.x0 = (1, 0, 1)
         self.normalize = normalize
         self.select_optimal = numpy.argmin
+        self.use_foreground = use_foreground
 
     def evaluate(self, sted_stack, confocal_init, confocal_end, sted_fg, confocal_fg, *args, **kwargs):
         """
@@ -352,22 +353,26 @@ class Squirrel(Objective):
         """
         # Optimize
         if not numpy.any(sted_stack[0]):
-            return mean_squared_error(confocal_init[confocal_fg], sted_stack[0][confocal_fg], squared=True)
+            return mean_squared_error(confocal_init[confocal_fg], sted_stack[0][confocal_fg], squared=False)
         # Optimize
         result = self.optimize(sted_stack[0], confocal_init)
-        return self.squirrel(result.x, sted_stack[0], confocal_init)
+        if self.use_foreground:
+            return self.squirrel(result.x, sted_stack[0], confocal_init, confocal_fg=confocal_fg)
+        else:
+            return self.squirrel(result.x, sted_stack[0], confocal_init)
 
-    def squirrel(self, x, *args):
+    def squirrel(self, x, *args, **kwargs):
         """
         Computes the reconstruction error between
         """
         alpha, beta, sigma = x
         super_resolution, reference = args
+        confocal_fg = kwargs.get("confocal_fg", numpy.ones_like(super_resolution, dtype=bool))
         convolved = self.convolve(super_resolution, alpha, beta, sigma)
         if self.normalize:
             reference = (reference - reference.min()) / (reference.max() - reference.min() + 1e-9)
             convolved = (convolved - convolved.min()) / (convolved.max() - convolved.min() + 1e-9)
-        error = mean_squared_error(reference, convolved, squared=True)
+        error = mean_squared_error(reference[confocal_fg], convolved[confocal_fg], squared=False)
         return error
 
     def optimize(self, super_resolution, reference):
