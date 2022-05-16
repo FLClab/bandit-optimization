@@ -44,7 +44,7 @@ class MO_function_sample():
             X[:, self.param_names.index(param)] = numpy.round(X[:, self.param_names.index(param)])
         ys = numpy.array([self.algos[i].sample(X, seed=self.seeds[i]) for i in range(len(self.algos))]).squeeze(axis=-1)
         if self.time_limit is not None:
-            pixeltimes = X[:, self.param_names.index("dwelltime")] * X[:, self.param_names.index("line_step")] * X[:, self.param_names.index("pixelsize")]**2/(20e-9)**2 
+            pixeltimes = X[:, self.param_names.index("dwelltime")] * X[:, self.param_names.index("line_step")] * X[:, self.param_names.index("pixelsize")]**2/(20e-9)**2
             for i, bounds in enumerate(self.borders):
                 if weights[i] < 0:
                     ys[i, :][pixeltimes > self.time_limit] = bounds[1] + (bounds[1]-bounds[0])*1.5
@@ -62,7 +62,7 @@ def rescale_X(X, param_space_bounds):
     for col in range(X.shape[1]):
         xmin, xmax = param_space_bounds[col]
         xmean = (xmax+xmin)/2
-        X[:,col] = (X[:,col] - xmean)/(xmax - xmin)
+        X[:,col] = (X[:,col] - xmean)/(0.5 * (xmax - xmin))
     return X
 
 class sklearn_GP(GaussianProcessRegressor):
@@ -141,9 +141,7 @@ class sklearn_BayesRidge(BayesianRidge):
         self.degree=degree
         self.param_space_bounds=param_space_bounds
 
-        self.scaler = StandardScaler(with_mean=True, with_std=False)
-        self.y_mean = 0
-
+        self.scaler = StandardScaler(with_mean=True, with_std=True)
 
     def update(self, X, y):
         """Update the regression model using the observations *y* acquired at
@@ -158,8 +156,6 @@ class sklearn_BayesRidge(BayesianRidge):
             X = PolynomialFeatures(self.degree).fit_transform(X)[:,1:]
         else:
             X = PolynomialFeatures(self.degree).fit_transform(X)
-            # self.y_mean = np.mean(y)
-            # y = y - self.y_mean
             if y.ndim == 1:
                 y = y[:, numpy.newaxis]
             y = self.scaler.fit_transform(y)
@@ -181,8 +177,9 @@ class sklearn_BayesRidge(BayesianRidge):
         mean, std_withnoise = self.predict(X, return_std=True)
         std = np.sqrt(std_withnoise**2 - (1/self.alpha_))
         if not self.fit_intercept:
+            if mean.ndim == 1:
+                mean = mean[:, numpy.newaxis]
             mean = self.scaler.inverse_transform(mean)
-            # mean+=self.y_mean
         if return_withnoise:
             return mean, std, std_withnoise
         else:
@@ -197,10 +194,7 @@ class sklearn_BayesRidge(BayesianRidge):
         """
         if self.param_space_bounds is not None:
             X = rescale_X(X, self.param_space_bounds)
-        if seed is not None:
-            w_sample = np.random.default_rng(seed).multivariate_normal(self.coef_, self.sigma_)
-        else:
-            w_sample = np.random.default_rng().multivariate_normal(self.coef_, self.sigma_)
+        w_sample = np.random.default_rng(seed).multivariate_normal(self.coef_, self.sigma_)
         if self.fit_intercept:
             X = PolynomialFeatures(self.degree).fit_transform(X)[:,1:]
             return X@w_sample[:,np.newaxis] + self.intercept_
@@ -208,10 +202,6 @@ class sklearn_BayesRidge(BayesianRidge):
             X = PolynomialFeatures(self.degree).fit_transform(X)
             y = X@w_sample[:,np.newaxis]
             return self.scaler.inverse_transform(y)
-
-
-
-
 
 class TS_sampler():
     """This class relies on regressor class to generate options to present to the user

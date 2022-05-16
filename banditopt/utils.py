@@ -417,7 +417,7 @@ def NSGAII(optim_func, BOUND_LOW, BOUND_UP, weights, NGEN=250, MU=100,
     param min_std:      If not None, threshold under which the algorithm is stopped
     param conditions:   A `list` of conditions
     """
-    
+
     def _max(x):
         x = numpy.array(x)
         where = x != numpy.inf
@@ -474,8 +474,8 @@ def NSGAII(optim_func, BOUND_LOW, BOUND_UP, weights, NGEN=250, MU=100,
     stats.register("max", _max)
 
     logbook = tools.Logbook()
-#     logbook.header = "gen", "evals", "std", "min", "avg", "max"
-    logbook.header = "gen", "evals", "min", "max"
+    # logbook.header = "gen", "evals", "std", "min", "avg", "max"
+    logbook.header = "gen", "evals", "min", "max", "avg"
 
     pop = toolbox.population(n=MU)
 
@@ -527,12 +527,13 @@ def NSGAII(optim_func, BOUND_LOW, BOUND_UP, weights, NGEN=250, MU=100,
 
 
         if gen >= L-1:
-            # Calculate the rolling std of the max crowding distance
-            std = numpy.std([d['max'] for d in logbook[-L:]])
+            # Stopping criterion from Roudenko et al; A Steady Performance Stopping Criterion for Pareto-based Evolutionary Algorithms
+            # # Calculate the rolling std of the max crowding distance
+            std = numpy.std([d['max'] - d['min'] for d in logbook[-L:]])
             if (min_std is not None) and (std < min_std):
                 # Stop the optimization
                 break
-    
+
     X = numpy.array(tools.sortLogNondominated(pop, len(pop),first_front_only=True))
     for param in integer_params:
         X[:, param_names.index(param)] = numpy.round(X[:, param_names.index(param)])

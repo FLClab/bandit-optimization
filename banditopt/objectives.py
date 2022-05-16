@@ -316,7 +316,11 @@ class FWHMResolution(Objective):
             # We skip if the fit did not converge
             if isinstance(sigma, type(None)):
                 continue
-            resolutions.append(2 * numpy.sqrt(2 * numpy.log(2)) * sigma * self.pixelsize)
+            resolution = 2 * numpy.sqrt(2 * numpy.log(2)) * sigma * self.pixelsize
+            resolutions.append(
+                resolution if resolution >= 2 * self.pixelsize # Nyquist criterion
+                else 2 * numpy.sqrt(2 * numpy.log(2)) * delta * self.pixelsize # invalid resolution
+            )
         if resolutions:
             # We return the average calculated resolution
             return numpy.mean(resolutions)
@@ -488,3 +492,105 @@ class Squirrel(Objective):
         Convolves an image with the given parameters
         """
         return gaussian_filter(img * alpha + beta, sigma=sigma)
+
+# class Squirrel(Objective):
+#     """
+#     Implements the `Squirrel` objective
+#
+#     :param method: A `str` of the method used to optimize
+#     :param normalize: A `bool` wheter to normalize the images
+#     """
+#     def __init__(self, method="L-BFGS-B", normalize=False, use_foreground=False):
+#
+#         self.method = method
+#         self.bounds = (-numpy.inf, numpy.inf), (-numpy.inf, numpy.inf), (0, numpy.inf)
+#         self.x0 = (1, 0, 1)
+#         self.normalize = normalize
+#         self.select_optimal = numpy.argmin
+#         self.use_foreground = use_foreground
+#
+#     def evaluate(self, sted_stack, confocal_init, confocal_end, sted_fg, confocal_fg, *args, **kwargs):
+#         """
+#         Evaluates the objective
+#
+#         :param sted_stack: A list of STED images.
+#         :param confocal_init: A confocal image acquired before the STED stack.
+#         :param concofal_end: A confocal image acquired after the STED stack.
+#         :param sted_fg: A background mask of the first STED image in the stack
+#                         (2d array of bool: True on foreground, False on background).
+#         :param confocal_fg: A background mask of the initial confocal image
+#                             (2d array of bool: True on foreground, False on background).
+#         """
+#         # Optimize
+#         if not numpy.any(sted_stack[0]):
+#             return 1.
+# #             return mean_squared_error(confocal_init[confocal_fg], sted_stack[0][confocal_fg], squared=False)
+#         # Optimize
+#         result = self.optimize(sted_stack[0], confocal_init)
+#         if self.use_foreground:
+#             return 1.0 - self.squirrel(result.x, sted_stack[0], confocal_init, confocal_fg=confocal_fg)
+#         else:
+#             return 1.0 - self.out_squirrel(result.x, sted_stack[0], confocal_init)
+#
+#     def squirrel(self, x, *args, **kwargs):
+#         """
+#         Computes the reconstruction error between
+#         """
+#         alpha, beta, sigma = x
+#         super_resolution, reference = args
+#         confocal_fg = kwargs.get("confocal_fg", numpy.ones_like(super_resolution, dtype=bool))
+#
+#         non_zero = super_resolution != 0.
+#         _super_resolution = super_resolution.copy()
+#         _super_resolution[non_zero] = reference[non_zero]
+#
+#         convolved = self.convolve(_super_resolution, alpha, beta, sigma)
+#         if self.normalize:
+#             reference = (reference - reference.min()) / (reference.max() - reference.min() + 1e-9)
+#             convolved = (convolved - convolved.min()) / (convolved.max() - convolved.min() + 1e-9)
+#         error = mean_squared_error(reference[confocal_fg], convolved[confocal_fg], squared=True)
+# #         error = numpy.quantile(numpy.abs(reference[confocal_fg] - convolved[confocal_fg]), [0.95]).item()
+# #         error = numpy.mean((reference[confocal_fg] - convolved[confocal_fg]))
+#         return error
+#
+#     def out_squirrel(self, x, *args, **kwargs):
+#         """
+#         Computes the reconstruction error between
+#         """
+#         alpha, beta, sigma = x
+#         super_resolution, reference = args
+#         confocal_fg = kwargs.get("confocal_fg", numpy.ones_like(super_resolution, dtype=bool))
+#
+#         non_zero = super_resolution != 0.
+#         _super_resolution = super_resolution.copy()
+#         _super_resolution[non_zero] = reference[non_zero]
+#
+#         convolved = self.convolve(_super_resolution, alpha, beta, sigma)
+#         if self.normalize:
+#             reference = (reference - reference.min()) / (reference.max() - reference.min() + 1e-9)
+#             convolved = (convolved - convolved.min()) / (convolved.max() - convolved.min() + 1e-9)
+# #         error = numpy.mean(numpy.abs(reference[confocal_fg] - convolved[confocal_fg]))
+# #         error = numpy.std(numpy.abs(reference[confocal_fg] - convolved[confocal_fg]))
+#         error = structural_similarity(reference, convolved)
+#         return error
+#
+#     def optimize(self, super_resolution, reference):
+#         """
+#         Optimizes the SQUIRREL parameters
+#
+#         :param super_resolution: A `numpy.ndarray` of the super-resolution image
+#         :param reference: A `numpy.ndarray` of the reference image
+#
+#         :returns : An `OptimizedResult`
+#         """
+#         result = optimize.minimize(
+#             self.squirrel, self.x0, args=(super_resolution, reference),
+#             method="L-BFGS-B", bounds=(self.bounds)
+#         )
+#         return result
+#
+#     def convolve(self, img, alpha, beta, sigma):
+#         """
+#         Convolves an image with the given parameters
+#         """
+#         return gaussian_filter(img * alpha + beta, sigma=sigma)

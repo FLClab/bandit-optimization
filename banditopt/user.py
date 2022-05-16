@@ -288,7 +288,7 @@ def select(thetas, objectives, with_time, times, figsize=(10, 10), borders=None)
         if with_time:
             sc = ax.scatter(thetas[0], thetas[1], s=(times-times.min())/time_range * 60 + 20, c=thetas[2], marker="o", alpha=0.5, picker=3, cmap=cmap)
         else:
-            sc = ax.scatter(thetas[0], thetas[1], c=thetas[2], marker="o", alpha=0.5, picker=3, cmap=cmap)
+            sc = ax.scatter(thetas[0], thetas[1], c=thetas[2], marker="o", alpha=0.5, picker=3, cmap=cmap)#, vmin=0, vmax=1)
         pyplot.colorbar(sc, ax=ax)
     elif len(thetas)==2:
         if with_time:
