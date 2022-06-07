@@ -5,6 +5,7 @@ multi-objective bandits optimization problem.
 """
 
 import numpy
+import torch
 
 from sklearn.gaussian_process import GaussianProcessRegressor
 from sklearn.gaussian_process.kernels import RBF, WhiteKernel
@@ -12,6 +13,9 @@ from sklearn.preprocessing import PolynomialFeatures
 import sklearn
 from sklearn.linear_model import BayesianRidge
 import numpy as np
+from torch import nn, optim
+
+from .models import LinearModel
 
 import copy
 
@@ -19,6 +23,23 @@ from sklearn.preprocessing import StandardScaler
 
 from inspect import currentframe, getframeinfo
 
+class Scaler:
+    def __init__(self, _min, _max):
+        if isinstance(_min, type(None)):
+            self._min = 0.
+            self._max = 1.
+        else:
+            self._min = numpy.array(_min)[:, numpy.newaxis]
+            self._max = numpy.array(_max)[:, numpy.newaxis]
+
+    def fit_transform(self, X):
+        return self.transform(X)
+
+    def transform(self, X):
+        return (X - self._min) / (self._max - self._min)
+
+    def inverse_transform(self, X):
+        return X * (self._max - self._min) + self._min
 
 class MO_function_sample():
     """
@@ -174,7 +195,7 @@ class sklearn_BayesRidge(BayesianRidge):
             X = PolynomialFeatures(self.degree).fit_transform(X)[:,1:]
         else:
             X = PolynomialFeatures(self.degree).fit_transform(X)
-        mean, std_withnoise = self.predict(X, return_std=True)
+        mean, std_withnoise = self.predict(X, return_std=True)[:, numpy.newaxis]
         std = np.sqrt(std_withnoise**2 - (1/self.alpha_))
         if not self.fit_intercept:
             if mean.ndim == 1:
@@ -202,6 +223,174 @@ class sklearn_BayesRidge(BayesianRidge):
             X = PolynomialFeatures(self.degree).fit_transform(X)
             y = X@w_sample[:,np.newaxis]
             return self.scaler.inverse_transform(y)
+
+class LinearBanditDiag:
+    """
+    Implements a `LinearBanditDiag` solver. This solver automatically learns the
+    features to extract using a NN model.
+
+    This code comes from https://github.com/ZeroWeight/NeuralTS/blob/master/learner_diag_linear.py
+    """
+    def __init__(self, n_features, n_hidden_dim=32, param_space_bounds=None, _lambda=1, nu=1, style="TS", learning_rate=1e-2, *args, **kwargs):
+        self.n_features = n_features
+        self.n_hidden_dim = n_hidden_dim
+        self.param_space_bounds = param_space_bounds
+        self._lambda = _lambda
+        self.nu = nu
+        self.style = style
+        self.learning_rate = learning_rate
+
+        self.min_features = kwargs.get("min_features", None)
+        self.max_features = kwargs.get("max_features", None)
+        self.scaler = Scaler(self.min_features, self.max_features)
+
+        self.reset()
+
+    def reset(self):
+        self.model = LinearModel(self.n_features, self.n_hidden_dim)
+        self.total_param = sum(p.numel() for key, p in self.model.named_parameters() if (p.requires_grad) and ("linear" in key))
+        self.U = self._lambda * torch.ones((self.total_param,))
+        if torch.cuda.is_available():
+            self.model = self.model.cuda()
+            self.U = self.U.cuda()
+
+    def update(self, X, y):
+        """
+        Updates the weights of the model
+
+        :param X: A `numpy.ndarray` of points with shape (N, features)
+        :param y: A `numpy.ndarray` of observed rewards
+        """
+        if self.param_space_bounds is not None:
+            X = rescale_X(X, self.param_space_bounds)
+        if y.ndim == 1:
+            y = y[:, numpy.newaxis]
+        y = self.scaler.fit_transform(y)
+
+        self.add_gradient(X)
+
+        # Convert X, y to torch
+        X = torch.tensor(X, dtype=torch.float32).unsqueeze(1)
+        y = torch.tensor(y, dtype=torch.float32)
+        if torch.cuda.is_available():
+            X = X.cuda()
+            y = y.cuda()
+
+        optimizer = optim.SGD(self.model.parameters(), lr=self.learning_rate)
+        length = len(y)
+        index = numpy.arange(length)
+        cnt = 0
+        tot_loss = 0
+        while True:
+            batch_loss = 0
+            numpy.random.shuffle(index)
+            for idx in index:
+                c = X[idx]
+                r = y[idx]
+                optimizer.zero_grad()
+                delta = self.model(c) - r
+                loss = delta * delta
+                loss.backward()
+                optimizer.step()
+                batch_loss += loss.item()
+                tot_loss += loss.item()
+                cnt += 1
+                if cnt >= 1000:
+                    return tot_loss / 1000
+            if batch_loss / length <= 1e-3:
+                return batch_loss / length
+
+    def add_gradient(self, X):
+        """
+        Calculate the gradient on sample X and add it to the U matrix
+        """
+        X = torch.from_numpy(X).float()
+        if torch.cuda.is_available():
+            X = X.cuda()
+        y = self.model(X)
+
+        fx = y[-1]
+        self.model.zero_grad()
+        fx.backward(retain_graph=True)
+        g = torch.cat([p.grad.flatten().detach() for key, p in self.model.named_parameters() if "linear" in key])
+        self.U += g * g
+
+    def get_mean_std(self, X):
+        """
+        Predicts mean and standard deviation at the given points
+
+        :param X: A `numpy.ndarray` of points with shape (N, features)
+
+        :returns: A `numpy.ndarray` of the mean at X
+                  A `numpy.ndarray` of the std at X
+        """
+        if self.param_space_bounds is not None:
+            X = rescale_X(X, self.param_space_bounds)
+        X = torch.from_numpy(X).float()
+        if torch.cuda.is_available():
+            X = X.cuda()
+        y = self.model(X)
+        g_list = []
+        sampled = []
+        ave_sigma = 0
+        ave_rew = 0
+        for fx in y:
+            self.model.zero_grad()
+            fx.backward(retain_graph=True)
+            g = torch.cat([p.grad.flatten().detach() for key, p in self.model.named_parameters() if "linear" in key])
+            # sigma2 = self._lambda * self.nu * g * g / self.U
+            sigma2 = self._lambda * self.nu * g * g / self.U
+            sigma = torch.sqrt(torch.sum(sigma2))
+            sampled.append(sigma)
+
+        # TODO: Verify how to update this value properly
+        # self.U += g_list[arm] * g_list[arm]
+        std = numpy.array(sampled)[:, numpy.newaxis]
+        return self.scaler.inverse_transform(y.cpu().data.numpy()), std
+
+    def sample(self, X, seed=None):
+        """
+        Samples the function at points X
+
+        :param X: A `numpy.ndarray` of points with shape (N, features)
+        :param seed: (optional) An `int` of the random seed
+
+        :returns: A `numpy.ndarray` of the sampled function at the specified points
+        """
+        if self.param_space_bounds is not None:
+            X = rescale_X(X, self.param_space_bounds)
+        X = torch.from_numpy(X).float()
+        if torch.cuda.is_available():
+            X = X.cuda()
+        y = self.model(X)
+
+        g_list = []
+        sampled, sigmas = [], []
+        ave_sigma = 0
+        ave_rew = 0
+        rng = numpy.random.default_rng(seed)
+        for fx in y:
+            self.model.zero_grad()
+            fx.backward(retain_graph=True)
+            g = torch.cat([p.grad.flatten().detach() for key, p in self.model.named_parameters() if "linear" in key])
+            g_list.append(g)
+            # sigma2 = self._lambda * self.nu * g * g / self.U
+            sigma2 = self._lambda * self.nu * g * g / self.U
+            sigma = torch.sqrt(torch.sum(sigma2))
+            if self.style == 'TS':
+                sample_r = rng.normal(loc=fx.item(), scale=sigma.item())
+            elif self.style == 'UCB':
+                sample_r = fx.item() + sigma.item()
+            else:
+                raise RuntimeError('Exploration style not set')
+            sampled.append(sample_r)
+            ave_sigma += sigma.item()
+            ave_rew += sample_r
+
+        # TODO: Verify how to update this value
+        # self.U += g_list[arm] * g_list[arm]
+        sampled = numpy.array(sampled)[:, numpy.newaxis]
+        return self.scaler.inverse_transform(sampled)
 
 class TS_sampler():
     """This class relies on regressor class to generate options to present to the user

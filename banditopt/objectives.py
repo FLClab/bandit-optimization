@@ -410,6 +410,7 @@ class Squirrel(Objective):
     """
     def __init__(self, method="L-BFGS-B", normalize=False, use_foreground=False):
 
+        self.label = "Squirrel"
         self.method = method
         self.bounds = (-numpy.inf, numpy.inf), (-numpy.inf, numpy.inf), (0, numpy.inf)
         self.x0 = (1, 0, 1)
