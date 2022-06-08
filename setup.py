@@ -8,6 +8,9 @@ setup(
 	install_requires=[
 		"pyyaml",
 		"statsmodels",
-		"deap"
-	]
+		"deap",
+		"scikit-learn",
+		"numpy"
+	],
+	packages=["banditopt"],
 )
