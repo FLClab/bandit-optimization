@@ -5,7 +5,7 @@ content.
 """
 
 import numpy
-import matplotlib; matplotlib.use("TkAgg")
+import matplotlib; #matplotlib.use("TkAgg")
 from matplotlib import gridspec, pyplot , widgets
 pyplot.ion()
 
