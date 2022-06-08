@@ -341,7 +341,7 @@ class LinearBanditDiag:
             # sigma2 = self._lambda * self.nu * g * g / self.U
             sigma2 = self._lambda * self.nu * g * g / self.U
             sigma = torch.sqrt(torch.sum(sigma2))
-            sampled.append(sigma)
+            sampled.append(sigma.item())
 
         # TODO: Verify how to update this value properly
         # self.U += g_list[arm] * g_list[arm]
