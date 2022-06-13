@@ -102,7 +102,7 @@ class sklearn_GP(GaussianProcessRegressor):
         self.noise_var = noise_level
         self.norm_bound = norm_bound
 
-        self.scaler = StandardScaler(with_mean=True, with_std=False)
+        self.scaler = StandardScaler(with_mean=True, with_std=True)
 
     def update(self, X, y):
         if y.ndim == 1:
@@ -126,12 +126,13 @@ class sklearn_GP(GaussianProcessRegressor):
     def sample(self, X, seed=None):
         mean, k = self.predict(X, return_cov=True)
 
-        # Rescales sampled mean
-        mean = self.scaler.inverse_transform(mean)
-
         cov = self.norm_bound**2  * k
         rng = numpy.random.default_rng(seed)
         f_tilde = rng.multivariate_normal(mean.flatten(), cov, method='eigh')[:,np.newaxis]
+
+        # Rescales sampled mean
+        f_tilde = self.scaler.inverse_transform(f_tilde)
+
         return f_tilde
 
 
