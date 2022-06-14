@@ -91,20 +91,22 @@ class sklearn_GP(GaussianProcessRegressor):
     class. It uses a scikit-learn implementation of Gaussian process regression. The
     regularization is fixed (no adaptative regularization).
     """
+    def __init__(self, bandwidth, s_lb, s_ub, param_space_bounds=None, normalize_y=False, **kwargs):
 
-    def __init__(self, cte, length_scale, noise_level, alpha, normalize_y=True, **kwargs):
-#        kernel=cte * RBF(length_scale=length_scale) + WhiteKernel(noise_level=noise_level)
-#        super().__init__(kernel=kernel, alpha=alpha, normalize_y=normalize_y, optimizer=optimizer, )
-#        lambda_ =
-#        self.lambda = s_ub**2/norm_bound**2
-        norm_bound = np.sqrt(cte)
-        super().__init__(RBF(length_scale=length_scale), alpha=noise_level/norm_bound**2, optimizer=None, normalize_y=normalize_y)
-        self.noise_var = noise_level
-        self.norm_bound = norm_bound
+        self.bandwidth = bandwidth
+        self.s_lb = s_lb
+        self.s_ub = s_ub
+        self.norm_bound = 5.0
+        self.lambda_ = s_ub ** 2 / self.norm_bound ** 2
 
-        self.scaler = StandardScaler(with_mean=True, with_std=False)
+        super().__init__(RBF(length_scale=self.bandwidth), alpha=self.lambda_, optimizer=None, normalize_y=normalize_y)
+
+        self.param_space_bounds = param_space_bounds
+        self.scaler = StandardScaler(with_mean=True, with_std=True)
 
     def update(self, X, y):
+        if self.param_space_bounds is not None:
+            X = rescale_X(X, self.param_space_bounds)
         if y.ndim == 1:
             y = y[:, numpy.newaxis]
         y = self.scaler.fit_transform(y)
@@ -112,28 +114,27 @@ class sklearn_GP(GaussianProcessRegressor):
         self.fit(X,y)
 
     def get_mean_std(self, X):
+        if self.param_space_bounds is not None:
+            X = rescale_X(X, self.param_space_bounds)
         mean, sqrt_k = self.predict(X, return_std=True)
+        std = self.s_ub / numpy.sqrt(self.lambda_) * sqrt_k
 
         # Rescales sampled mean
         mean = self.scaler.inverse_transform(mean)
-
-#        std = np.sqrt(std**2 - self.noise_var)
-#        mean, sqrt_k = gp.predict(X_pred, return_std=True)
-#        std = self.s_ub / numpy.sqrt(self.lambda_) * sqrt_k
-        std = self.norm_bound * sqrt_k
+        std = std * self.scaler.scale_
         return mean, std
 
     def sample(self, X, seed=None):
+        if self.param_space_bounds is not None:
+            X = rescale_X(X, self.param_space_bounds)
+
         mean, k = self.predict(X, return_cov=True)
-
+        cov = self.s_ub ** 2 / self.lambda_ * k
         # Rescales sampled mean
-        mean = self.scaler.inverse_transform(mean)
-
-        cov = self.norm_bound**2  * k
         rng = numpy.random.default_rng(seed)
-        f_tilde = rng.multivariate_normal(mean.flatten(), cov, method='eigh')[:,np.newaxis]
+        f_tilde = rng.multivariate_normal(mean.flatten(), cov, method='eigh')[:,numpy.newaxis]
+        f_tilde = self.scaler.inverse_transform(f_tilde)
         return f_tilde
-
 
 class sklearn_BayesRidge(BayesianRidge):
     """This class is meant to be used as a the regressor argument of the TS_sampler
