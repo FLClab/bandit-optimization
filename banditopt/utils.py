@@ -12,6 +12,7 @@ from scipy.optimize import curve_fit
 from scipy.spatial.distance import cdist
 
 from skimage import filters
+from functools import partial
 
 import deap
 from deap import base
@@ -398,7 +399,7 @@ def uniform(low, up, size=None):
 def NSGAII(optim_func, BOUND_LOW, BOUND_UP, weights, NGEN=250, MU=100,
            CXPB=0.9, eta_cx=20.0, eta_mu=20.0, indpb_nom = 1,
            L = 6, min_std=None, seed=None, prnt=False, return_niter=True,
-           conditions=[], integer_params=[], param_names=None):
+           conditions=[], integer_params=[], param_names=None, verbose=False, *args, **kwargs):
     """
     ---- Problem parameters ----
     param optim_func:   Function to optimize
@@ -495,11 +496,15 @@ def NSGAII(optim_func, BOUND_LOW, BOUND_UP, weights, NGEN=250, MU=100,
         print(logbook.stream)
 
     # Begin the generational process
-    for gen in range(1, NGEN):
+    if verbose:
+        from tqdm.auto import trange
+        vrange = partial(trange, desc="Generations")
+    else:
+        vrange = range
+    for gen in vrange(1, NGEN):
         # Vary the population
         offspring = tools.selTournamentDCD(pop, len(pop))
         offspring = [toolbox.clone(ind) for ind in offspring]
-
 
         for ind1, ind2 in zip(offspring[::2], offspring[1::2]):
             if random.random() <= CXPB:
@@ -515,6 +520,7 @@ def NSGAII(optim_func, BOUND_LOW, BOUND_UP, weights, NGEN=250, MU=100,
         # Evaluate the individuals with an invalid fitness
         invalid_ind = [ind for ind in offspring if not ind.fitness.valid]
         fitnesses = optim_func(invalid_ind, params_to_round=integer_params, weights=weights)
+        # print(fitnesses)
         for ind, fit in zip(invalid_ind, fitnesses):
             ind.fitness.values = fit
 

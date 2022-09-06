@@ -10,7 +10,8 @@ setup(
 		"statsmodels",
 		"deap",
 		"scikit-learn",
-		"numpy"
+		"numpy",
+		"torch"
 	],
 	packages=["banditopt"],
 )

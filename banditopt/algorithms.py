@@ -6,6 +6,8 @@ multi-objective bandits optimization problem.
 
 import numpy
 import torch
+import os
+import time
 
 from sklearn.gaussian_process import GaussianProcessRegressor
 from sklearn.gaussian_process.kernels import RBF, WhiteKernel
@@ -14,14 +16,33 @@ import sklearn
 from sklearn.linear_model import BayesianRidge
 import numpy as np
 from torch import nn, optim
+from tqdm.auto import trange, tqdm
+from collections import defaultdict
 
-from .models import LinearModel
+from .models import LinearModel, LinearLSTMModel
 
 import copy
 
 from sklearn.preprocessing import StandardScaler
 
 from inspect import currentframe, getframeinfo
+
+def to_cuda(elements):
+    if isinstance(elements, (tuple)):
+        elements = list(elements)
+    if isinstance(elements, (list)):
+        for i, element in enumerate(elements):
+            elements[i] = to_cuda(element)
+    elif isinstance(elements, dict):
+        for key, value in elements.items():
+            elements[key] = to_cuda(value)
+    else:
+        if isinstance(elements, numpy.ndarray):
+            elements = torch.tensor(elements, dtype=torch.float32)
+        if isinstance(elements, torch.Tensor):
+            elements = elements.cuda()
+            return elements
+    return elements
 
 class Scaler:
     def __init__(self, _min, _max):
@@ -38,20 +59,23 @@ class Scaler:
     def transform(self, X):
         return (X - self._min) / (self._max - self._min)
 
-    def inverse_transform(self, X):
-        return X * (self._max - self._min) + self._min
+    def inverse_transform(self, X, std=False):
+        if std:
+            return X * (self._max - self._min)
+        else:
+            return X * (self._max - self._min) + self._min
 
 class MO_function_sample():
     """
     This class creates a function sample with randomly generated random seeds
 
     algos: list of TS_sampler objects
-    with_time: Optimize the (dell)time also
+    with_time: Optimize the (dwell)time also
     param_names: list of parameters to optimize
 
     individual: an array like object with parameter values
     """
-    def __init__(self, algos, with_time, param_names, time_limit=None, borders=None):
+    def __init__(self, algos, with_time, param_names, time_limit=None, borders=None, *args, **kwargs):
         self.seeds = [np.random.randint(2**31) for i in range(len(algos))]
         self.algos = algos
         self.with_time = with_time
@@ -59,11 +83,15 @@ class MO_function_sample():
         self.borders = borders
         self.param_names = param_names
 
+        self.history = kwargs.get("history", {})
+
     def evaluate(self, individuals, params_to_round=[], weights=None):
         X = numpy.array(individuals)
         for param in params_to_round:
             X[:, self.param_names.index(param)] = numpy.round(X[:, self.param_names.index(param)])
-        ys = numpy.array([self.algos[i].sample(X, seed=self.seeds[i]) for i in range(len(self.algos))]).squeeze(axis=-1)
+
+        ys = numpy.array([self.algos[i].sample(X, seed=self.seeds[i], history=self.history) for i in range(len(self.algos))]).squeeze(axis=-1)
+        # ys = numpy.array([self.algos[i].predict(X)[0] for i in range(len(self.algos))]).squeeze(axis=-1)
         if self.time_limit is not None:
             pixeltimes = X[:, self.param_names.index("dwelltime")] * X[:, self.param_names.index("line_step")] * X[:, self.param_names.index("pixelsize")]**2/(20e-9)**2
             for i, bounds in enumerate(self.borders):
@@ -79,6 +107,8 @@ class MO_function_sample():
             return list(map(tuple, ys.T))
 
 def rescale_X(X, param_space_bounds):
+    if X.ndim != 2:
+        return []
     X = copy.deepcopy(X)
     for col in range(X.shape[1]):
         xmin, xmax = param_space_bounds[col]
@@ -104,7 +134,7 @@ class sklearn_GP(GaussianProcessRegressor):
         self.param_space_bounds = param_space_bounds
         self.scaler = StandardScaler(with_mean=True, with_std=True)
 
-    def update(self, X, y):
+    def update(self, X, y, *args, **kwargs):
         if self.param_space_bounds is not None:
             X = rescale_X(X, self.param_space_bounds)
         if y.ndim == 1:
@@ -120,6 +150,8 @@ class sklearn_GP(GaussianProcessRegressor):
         std = self.s_ub / numpy.sqrt(self.lambda_) * sqrt_k
 
         # Rescales sampled mean
+        if mean.ndim == 1:
+            mean = mean[:, numpy.newaxis]
         mean = self.scaler.inverse_transform(mean)
         std = std * self.scaler.scale_
         return mean, std
@@ -165,7 +197,7 @@ class sklearn_BayesRidge(BayesianRidge):
 
         self.scaler = StandardScaler(with_mean=True, with_std=True)
 
-    def update(self, X, y):
+    def update(self, X, y, *args, **kwargs):
         """Update the regression model using the observations *y* acquired at
         locations *X*.
 
@@ -232,18 +264,31 @@ class LinearBanditDiag:
 
     This code comes from https://github.com/ZeroWeight/NeuralTS/blob/master/learner_diag_linear.py
     """
-    def __init__(self, n_features, n_hidden_dim=32, param_space_bounds=None, _lambda=1, nu=1, style="TS", learning_rate=1e-2, *args, **kwargs):
+    def __init__(
+            self, n_features, n_hidden_dim=32, param_space_bounds=None,
+            _lambda=1, nu=1, style="TS", learning_rate=1e-2, update_exploration=False,
+            *args, **kwargs
+        ):
         self.n_features = n_features
         self.n_hidden_dim = n_hidden_dim
         self.param_space_bounds = param_space_bounds
         self._lambda = _lambda
         self.nu = nu
+
+        self.default_nu = nu
+        self.default_lambda = _lambda
+
+        self.update_exploration = update_exploration
         self.style = style
         self.learning_rate = learning_rate
 
         self.min_features = kwargs.get("min_features", None)
         self.max_features = kwargs.get("max_features", None)
         self.scaler = Scaler(self.min_features, self.max_features)
+
+        self.update_gradient = kwargs.get("update_gradient", True)
+
+        self.__cache = {}
 
         self.reset()
 
@@ -255,27 +300,40 @@ class LinearBanditDiag:
             self.model = self.model.cuda()
             self.U = self.U.cuda()
 
-    def update(self, X, y):
+    def update(self, X, y, weights=None, *args, **kwargs):
         """
         Updates the weights of the model
 
         :param X: A `numpy.ndarray` of points with shape (N, features)
         :param y: A `numpy.ndarray` of observed rewards
         """
+        self.clear_cache()
+
+        if self.update_exploration:
+            self.nu = max(self.default_nu * 1 / numpy.sqrt(len(X)), 1e-4)
+            self._lambda = max(self.default_lambda * 1 / numpy.sqrt(len(X)), 1e-4)
+
         if self.param_space_bounds is not None:
             X = rescale_X(X, self.param_space_bounds)
         if y.ndim == 1:
             y = y[:, numpy.newaxis]
         y = self.scaler.fit_transform(y)
 
-        self.add_gradient(X)
+        if isinstance(weights, type(None)):
+            weights = numpy.ones_like(y)
+        assert len(weights) == len(y), "Weights and y should have the same length"
+
+        if self.update_gradient:
+            self.add_gradient(X)
 
         # Convert X, y to torch
         X = torch.tensor(X, dtype=torch.float32).unsqueeze(1)
         y = torch.tensor(y, dtype=torch.float32)
+        weights = torch.tensor(weights, dtype=torch.float32)
         if torch.cuda.is_available():
             X = X.cuda()
             y = y.cuda()
+            weights = weights.cuda()
 
         optimizer = optim.SGD(self.model.parameters(), lr=self.learning_rate)
         length = len(y)
@@ -290,7 +348,7 @@ class LinearBanditDiag:
                 r = y[idx]
                 optimizer.zero_grad()
                 delta = self.model(c) - r
-                loss = delta * delta
+                loss = delta * delta * weights[idx]
                 loss.backward()
                 optimizer.step()
                 batch_loss += loss.item()
@@ -315,6 +373,22 @@ class LinearBanditDiag:
         fx.backward(retain_graph=True)
         g = torch.cat([p.grad.flatten().detach() for key, p in self.model.named_parameters() if "linear" in key])
         self.U += g * g
+
+    def get_mean(self, X):
+        """
+        Predicts mean at the given points
+
+        :param X: A `numpy.ndarray` of points with shape (N, features)
+
+        :returns: A `numpy.ndarray` of the mean at X
+        """
+        if self.param_space_bounds is not None:
+            X = rescale_X(X, self.param_space_bounds)
+        X = torch.from_numpy(X).float()
+        if torch.cuda.is_available():
+            X = X.cuda()
+        y = self.model(X)
+        return self.scaler.inverse_transform(y.cpu().data.numpy())
 
     def get_mean_std(self, X):
         """
@@ -346,10 +420,10 @@ class LinearBanditDiag:
 
         # TODO: Verify how to update this value properly
         # self.U += g_list[arm] * g_list[arm]
-        std = numpy.array(sampled)[:, numpy.newaxis]
+        std = self.scaler.inverse_transform(numpy.array(sampled)[:, numpy.newaxis], std=True)
         return self.scaler.inverse_transform(y.cpu().data.numpy()), std
 
-    def sample(self, X, seed=None):
+    def sample(self, X, seed=None, *args, **kwargs):
         """
         Samples the function at points X
 
@@ -369,16 +443,332 @@ class LinearBanditDiag:
         sampled, sigmas = [], []
         ave_sigma = 0
         ave_rew = 0
-        rng = numpy.random.default_rng(seed)
-        for fx in y:
-            self.model.zero_grad()
-            fx.backward(retain_graph=True)
-            g = torch.cat([p.grad.flatten().detach() for key, p in self.model.named_parameters() if "linear" in key])
+        for i, fx in enumerate(y):
+            g = self.cache(X[i], fx)
+            # self.model.zero_grad()
+            # fx.backward(retain_graph=True)
+            # g = torch.cat([p.grad.flatten().detach() for key, p in self.model.named_parameters() if "linear" in key])
             g_list.append(g)
+
             # sigma2 = self._lambda * self.nu * g * g / self.U
             sigma2 = self._lambda * self.nu * g * g / self.U
             sigma = torch.sqrt(torch.sum(sigma2))
             if self.style == 'TS':
+                rng = numpy.random.default_rng(seed)
+                sample_r = rng.normal(loc=fx.item(), scale=sigma.item())
+            elif self.style == 'UCB':
+                sample_r = fx.item() + sigma.item()
+            else:
+                raise RuntimeError('Exploration style not set')
+            sampled.append(sample_r)
+            ave_sigma += sigma.item()
+            ave_rew += sample_r
+
+        # TODO: Verify how to update this value
+        # self.U += g_list[arm] * g_list[arm]
+        sampled = numpy.array(sampled)[:, numpy.newaxis]
+        return self.scaler.inverse_transform(sampled)
+
+    def cache(self, key, value):
+        if not self._isin_cache(key):
+            self.model.zero_grad()
+            value.backward(retain_graph=True)
+            g = torch.cat([p.grad.flatten().detach() for key, p in self.model.named_parameters() if "linear" in key])
+            self.__cache[self._convert_to_key(key)] = g
+        return self.__cache[self._convert_to_key(key)]
+
+    def clear_cache(self):
+        self.__cache = {}
+
+    def _isin_cache(self, value):
+        return self._convert_to_key(value) in self.__cache
+
+    def _convert_to_key(self, value):
+        if isinstance(value, torch.Tensor):
+            value = value.cpu().data.numpy().tolist()
+        if isinstance(value, list):
+            return str([round(val, 1) for val in value])
+        else:
+            return str(round(value.item(), 1))
+
+    def get_U(self):
+        """
+        Gets the exploration matrix
+
+        :returns : A `numpy.ndarray` of the exploration matrix
+        """
+        return self.U.cpu().data.numpy()
+
+    def set_U(self, U):
+        """
+        Sets the exploration matrix
+
+        :param: A `numpy.ndarray` of the exploration matrix
+        """
+        if isinstance(U, numpy.ndarray):
+            self.U = torch.tensor(U)
+        else:
+            self.U = U
+        if torch.cuda.is_available():
+            self.U = self.U.cuda()
+
+    def update_params(self, **kwargs):
+        """
+        Updates the regressor parameters
+
+        :param params: A `dict` of the parameters to update
+        """
+        for key, value in kwargs.items():
+            if key == "U":
+                self.set_U(value)
+            elif key == "model":
+                # Sends model on gpu if applicable
+                if not next(value.parameters()).is_cuda and torch.cuda.is_available():
+                    value = value.cuda()
+                setattr(self, key, value)
+            else:
+                setattr(self, key, value)
+
+    def save_ckpt(self, path, prefix="", trial=""):
+        """
+        Saves a checkpoint of the model
+
+        :param path: A `str` of the model path
+        :param prefix: A `str` of the model name
+        """
+        path = os.path.join(path, "models")
+        if trial:
+            path = os.path.join(path, trial)
+
+        os.makedirs(path, exist_ok=True)
+        savename = f"{prefix}_model.ckpt" if prefix else "model.ckpt"
+        torch.save(self, os.path.join(path, savename))
+
+    def load_ckpt(self, path, prefix="", trial=""):
+        """
+        Loads a checkpoint of the model
+
+        :param path: A `str` of the model path
+        :param prefix: A `str` of the model name
+        """
+        path = os.path.join(path, "models")
+        if trial:
+            path = os.path.join(path, trial)
+
+        savename = f"{prefix}_model.ckpt" if prefix else "model.ckpt"
+        params = torch.load(os.path.join(path, savename), map_location="cpu")
+        self.update_params(**vars(params))
+
+        self.model.load_state_dict(params.model.state_dict())
+
+class LinearLSTMBanditDiag(LinearBanditDiag):
+    """
+    Implements a `LinearLSTMBanditDiag` solver. This solver automatically learns the
+    features to extract using a NN model.
+
+    This code comes from https://github.com/ZeroWeight/NeuralTS/blob/master/learner_diag_linear.py
+    """
+    def __init__(
+            self, n_features, n_hidden_dim=32, param_space_bounds=None,
+            _lambda=1, nu=1, style="TS", learning_rate=1e-2, update_exploration=False,
+            *args, **kwargs
+        ):
+        super(LinearLSTMBanditDiag, self).__init__(
+            n_features, n_hidden_dim, param_space_bounds, _lambda, nu, style,
+            learning_rate, update_exploration, *args, **kwargs
+        )
+
+        self.histories = []
+        self.idx = kwargs.get("idx")
+
+    def reset(self):
+        self.histories = []
+        self.model = LinearLSTMModel(self.n_features, self.n_hidden_dim)
+        self.total_param = sum(p.numel() for key, p in self.model.named_parameters() if (p.requires_grad) and ("linear" in key))
+        self.U = self._lambda * torch.ones((self.total_param,))
+        if torch.cuda.is_available():
+            self.model = self.model.cuda()
+            self.U = self.U.cuda()
+
+    def update(self, X, y, history, weights=None, *args, **kwargs):
+        """
+        Updates the weights of the model
+
+        :param X: A `numpy.ndarray` of points with shape (N, features)
+        :param y: A `numpy.ndarray` of observed rewards
+        """
+        self.clear_cache()
+        if self.update_exploration:
+            self.nu = max(self.default_nu * 1 / numpy.sqrt(len(X)), 1e-4)
+            self._lambda = max(self.default_lambda * 1 / numpy.sqrt(len(X)), 1e-4)
+
+        # We will be training with all the acquired histories
+        # To do so, we must recreate the sequence for each data point
+        history = copy.deepcopy(history)
+        if self.param_space_bounds is not None:
+            X = rescale_X(X, self.param_space_bounds)
+            if len(history["X"]) > 0:
+                history["X"] = rescale_X(numpy.concatenate(history["X"], axis=1).T, self.param_space_bounds)
+                history["y"] = self.scaler.fit_transform(numpy.array(history["y"]))[:, [self.idx]]
+                history["ctx"] = numpy.array(history["ctx"])
+        self.histories.append(history)
+
+        histories = []
+        for history_ in self.histories:
+            for i in range(len(history["X"])):
+                histories.append([
+                    history_["X"][[i]], # Keeps a [1, N] shape
+                    history_["y"][[i]], # Keeps a [1, 1] shape
+                    history_["ctx"][i],
+                    {
+                        "X" : history_["X"][:i],
+                        "y" : history_["y"][:i],
+                        "ctx" : history_["ctx"][:i]
+                    }
+                ])
+
+        # Convert X, y to torch
+        X = torch.tensor(X, dtype=torch.float32).unsqueeze(1)
+        if torch.cuda.is_available():
+            X = X.cuda()
+            history = to_cuda(history)
+            histories = to_cuda(histories)
+
+        if self.update_gradient:
+            self.add_gradient(X, history)
+
+        optimizer = optim.SGD(self.model.parameters(), lr=self.learning_rate)
+        length = len(histories)
+        index = numpy.arange(length)
+        cnt = 0
+        tot_loss = 0
+        while True:
+            batch_loss = 0
+            numpy.random.shuffle(index)
+            for idx in index:
+                X, y, ctx, history = histories[idx]
+                optimizer.zero_grad()
+                delta = self.model(X, history) - y
+                loss = delta * delta # * weights[idx]
+                loss.backward()
+                optimizer.step()
+                batch_loss += loss.item()
+                tot_loss += loss.item()
+                cnt += 1
+                if cnt >= 1000:
+                    return tot_loss / 1000
+            if batch_loss / length <= 1e-3:
+                return batch_loss / length
+
+    def add_gradient(self, X, history):
+        """
+        Calculate the gradient on sample X and add it to the U matrix
+        """
+        y = self.model(X, history)
+        fx = y[-1]
+        self.model.zero_grad()
+        fx.backward(retain_graph=True)
+        g = torch.cat([p.grad.flatten().detach() for key, p in self.model.named_parameters() if "linear" in key])
+        self.U += g * g
+
+    def get_mean(self, X):
+        """
+        Predicts mean at the given points
+
+        :param X: A `numpy.ndarray` of points with shape (N, features)
+
+        :returns: A `numpy.ndarray` of the mean at X
+        """
+        history = copy.deepcopy(history)
+        if self.param_space_bounds is not None:
+            X = rescale_X(X, self.param_space_bounds)
+            history["X"] = rescale_X(numpy.concatenate(history["X"], axis=1).T, self.param_space_bounds)
+        X = torch.from_numpy(X).float()
+        if torch.cuda.is_available():
+            X = X.cuda()
+            for key, value in history.items():
+                value = torch.from_numpy(numpy.array(value)).float()
+                history[key] = value.cuda()
+        y = self.model(X, history)
+
+        return self.scaler.inverse_transform(y.cpu().data.numpy())
+
+    def get_mean_std(self, X):
+        """
+        Predicts mean and standard deviation at the given points
+
+        :param X: A `numpy.ndarray` of points with shape (N, features)
+
+        :returns: A `numpy.ndarray` of the mean at X
+                  A `numpy.ndarray` of the std at X
+        """
+        history = copy.deepcopy(history)
+        if self.param_space_bounds is not None:
+            X = rescale_X(X, self.param_space_bounds)
+            history["X"] = rescale_X(numpy.concatenate(history["X"], axis=1).T, self.param_space_bounds)
+        X = torch.from_numpy(X).float()
+        if torch.cuda.is_available():
+            X = X.cuda()
+            history = to_cuda(history)
+        y = self.model(X, history)
+
+        g_list = []
+        sampled = []
+        ave_sigma = 0
+        ave_rew = 0
+        for fx in y:
+            self.model.zero_grad()
+            fx.backward(retain_graph=True)
+            g = torch.cat([p.grad.flatten().detach() for key, p in self.model.named_parameters() if "linear" in key])
+            # sigma2 = self._lambda * self.nu * g * g / self.U
+            sigma2 = self._lambda * self.nu * g * g / self.U
+            sigma = torch.sqrt(torch.sum(sigma2))
+            sampled.append(sigma.item())
+
+        # TODO: Verify how to update this value properly
+        # self.U += g_list[arm] * g_list[arm]
+        std = self.scaler.inverse_transform(numpy.array(sampled)[:, numpy.newaxis], std=True)
+        return self.scaler.inverse_transform(y.cpu().data.numpy()), std
+
+    def sample(self, X, history, seed=None, *args, **kwargs):
+        """
+        Samples the function at points X
+
+        :param X: A `numpy.ndarray` of points with shape (N, features)
+        :param seed: (optional) An `int` of the random seed
+
+        :returns: A `numpy.ndarray` of the sampled function at the specified points
+        """
+        history = copy.deepcopy(history)
+        if self.param_space_bounds is not None:
+            X = rescale_X(X, self.param_space_bounds)
+            if len(history["X"]) > 0:
+                history["X"] = rescale_X(numpy.concatenate(history["X"], axis=1).T, self.param_space_bounds)
+                history["y"] = self.scaler.fit_transform(numpy.array(history["y"]))[:, [self.idx]]
+                history["ctx"] = numpy.array(history["ctx"])
+
+        X = torch.from_numpy(X).float()
+        if torch.cuda.is_available():
+            X = X.cuda()
+            history = to_cuda(history)
+        y = self.model(X, history)
+
+        g_list = []
+        sampled, sigmas = [], []
+        ave_sigma = 0
+        ave_rew = 0
+        for i, fx in enumerate(y):
+            g = self.cache(X[i], fx)
+            # self.model.zero_grad()
+            # fx.backward(retain_graph=True)
+            # g = torch.cat([p.grad.flatten().detach() for key, p in self.model.named_parameters() if "linear" in key])
+            g_list.append(g)
+
+            # sigma2 = self._lambda * self.nu * g * g / self.U
+            sigma2 = self._lambda * self.nu * g * g / self.U
+            sigma = torch.sqrt(torch.sum(sigma2))
+            if self.style == 'TS':
+                rng = numpy.random.default_rng(seed)
                 sample_r = rng.normal(loc=fx.item(), scale=sigma.item())
             elif self.style == 'UCB':
                 sample_r = fx.item() + sigma.item()
@@ -404,21 +794,22 @@ class TS_sampler():
         self.regressor = regressor
         self.X = None
         self.y = None
+        self.weights = None
 
-    def predict(self, X_pred):
+    def predict(self, X_pred, *args, **kwargs):
         """Predict mean and standard deviation at given points *X_pred*.
 
         :param X_pred: A 2d array of locations at which to predict.
         :returns: An array of means and an array of standard deviations.
         """
         if self.X is not None:
-            return self.regressor.get_mean_std(X_pred)
+            return self.regressor.get_mean_std(X_pred, *args, **kwargs)
         else :
             mean = np.full(X_pred.shape[0], 0)
             std = np.full(X_pred.shape[0], 1)
             return mean, std
 
-    def sample(self, X_sample, seed=None):
+    def sample(self, X_sample, seed=None, *args, **kwargs):
         """Sample a function evaluated at points *X_sample*. When no points have
         been observed yet, the function values are sampled uniformly between 0 and 1.
 
@@ -426,7 +817,7 @@ class TS_sampler():
         :returns: A 1-D array of the pointwise evaluation of a sampled function.
         """
         if self.X is not None:
-            return self.regressor.sample(X_sample, seed)
+            return self.regressor.sample(X_sample, seed=seed, *args, **kwargs)
         else:
 #             mean= np.full(X_sample.shape[0], 0)
 #             cov = np.identity(X_sample.shape[0])
@@ -435,8 +826,7 @@ class TS_sampler():
             f_tilde = np.random.uniform(0,1,X_sample.shape[0])[:,np.newaxis]
         return f_tilde
 
-
-    def update(self, action, reward):
+    def update(self, action, reward, weights=None, *args, **kwargs):
         """Update the regression model using the observations *reward* acquired at
         location *action*.
 
@@ -446,7 +836,28 @@ class TS_sampler():
         if self.X is not None:
             self.X = np.append(self.X, action, axis=0)
             self.y = np.append(self.y, reward, axis=0)
+            if not isinstance(weights, type(None)):
+                self.weights = np.append(self.weights, weights, axis=0)
         else:
             self.X = action
             self.y = reward
-        self.regressor.update(self.X, self.y)
+            self.weights = weights
+        self.regressor.update(self.X, self.y, weights=self.weights, *args, **kwargs)
+
+    def update_params(self, **kwargs):
+        """
+        Update the regressor parameters
+        """
+        self.regressor.update_params(**kwargs)
+
+    def save_ckpt(self, path, *args, **kwargs):
+        """
+        Saves a checkpoint of the model
+        """
+        self.regressor.save_ckpt(path=path, *args, **kwargs)
+
+    def load_ckpt(self, path, *args, **kwargs):
+        """
+        Loads a checkpoint of the model
+        """
+        self.regressor.load_ckpt(path=path, *args, **kwargs)
