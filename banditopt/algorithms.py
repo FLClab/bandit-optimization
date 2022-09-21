@@ -826,7 +826,7 @@ class TS_sampler():
             f_tilde = np.random.uniform(0,1,X_sample.shape[0])[:,np.newaxis]
         return f_tilde
 
-    def update(self, action, reward, weights=None, *args, **kwargs):
+    def update(self, action, reward, weights=None, update_posterior=True, *args, **kwargs):
         """Update the regression model using the observations *reward* acquired at
         location *action*.
 
@@ -842,7 +842,8 @@ class TS_sampler():
             self.X = action
             self.y = reward
             self.weights = weights
-        self.regressor.update(self.X, self.y, weights=self.weights, *args, **kwargs)
+        if update_posterior:
+            self.regressor.update(self.X, self.y, weights=self.weights, *args, **kwargs)
 
     def update_params(self, **kwargs):
         """
