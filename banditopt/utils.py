@@ -478,7 +478,12 @@ def NSGAII(optim_func, BOUND_LOW, BOUND_UP, weights, NGEN=250, MU=100,
     # logbook.header = "gen", "evals", "std", "min", "avg", "max"
     logbook.header = "gen", "evals", "min", "max", "avg"
 
-    pop = toolbox.population(n=MU)
+    pop = kwargs.get("pop", None)
+    if isinstance(pop, type(None)):
+        pop = toolbox.population(n=MU)
+    else:
+        for ind in pop:
+            del ind.fitness.values
 
     # Evaluate the individuals with an invalid fitness
     invalid_ind = [ind for ind in pop if not ind.fitness.valid]
@@ -550,6 +555,6 @@ def NSGAII(optim_func, BOUND_LOW, BOUND_UP, weights, NGEN=250, MU=100,
         print("Final population hypervolume is %f" % hypervolume(pop, [11.0]*len(weights)))
 
     if return_niter:
-        return X, pd.DataFrame(logbook), gen+1
+        return X, pd.DataFrame(logbook), gen+1, pop
     else:
-        return X, pd.DataFrame(logbook)
+        return X, pd.DataFrame(logbook), pop
