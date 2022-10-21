@@ -2,6 +2,35 @@
 import torch
 
 from torch import nn
+from collections import OrderedDict
+
+class ContextEncoder(nn.Module):
+    def __init__(self, shape, n_hidden_dim=32, *args, **kwargs):
+        super(ContextEncoder, self).__init__()
+
+        self.shape = shape
+        if isinstance(shape, (tuple, list)):
+            self.shape = shape[0]
+        assert self.shape % 16 == 0, "Image shape should be a multiple of 16."
+
+        self.context_encoder = nn.Sequential(*[
+            nn.Conv2d(1, 8, kernel_size=3, padding=1),
+            nn.BatchNorm2d(8),
+            nn.MaxPool2d(4, 4),
+            nn.ReLU(),
+            nn.Conv2d(8, 16, kernel_size=3, padding=1),
+            nn.BatchNorm2d(16),
+            # nn.MaxPool2d(4, 4),
+            nn.AdaptiveAvgPool2d((1, 1)),
+            nn.ReLU(),
+            nn.Flatten(),
+            # nn.Linear(16*(self.shape//16)*(self.shape//16), n_hidden_dim),
+            nn.Linear(16, n_hidden_dim),
+            nn.ReLU(),
+        ])
+
+    def forward(self, x):
+        return self.context_encoder(x)
 
 class LinearModel(nn.Module):
     def __init__(self, in_features, hidden_dim=32):
@@ -22,9 +51,125 @@ class LinearModel(nn.Module):
         x = self.feature_extractor(x)
         return self.linear(x)
 
-class LinearLSTMModel(nn.Module):
+class ContextLinearModel(LinearModel):
+    def __init__(self, in_features, hidden_dim=32, every_step_decision=False):
+        super(ContextLinearModel, self).__init__(in_features, hidden_dim=hidden_dim)
+
+        self.every_step_decision = every_step_decision
+
+    def forward(self, X, history):
+        if X.dim() == 2:
+            X = X.unsqueeze(1)
+        # Extracts context from history.
+        if self.every_step_decision:
+            # We use the most recent context
+            ctx = history["ctx"][-1].view(1, 1, -1)
+        else:
+            # We use the first context
+            ctx = history["ctx"][0].view(1, 1, -1)
+
+        # Repeat ctx in cases of sampling
+        ctx = ctx.repeat(len(X), 1, 1)
+
+        X = torch.cat((X, ctx), dim=-1)
+
+        x = self.feature_extractor(X)
+        return self.linear(x)
+
+
+class ImageContextLinearModel(nn.Module):
+    def __init__(
+        self, in_features, image_shape, hidden_dim=32, pretrained_opts=None,
+        every_step_decision=False, *args, **kwargs
+    ):
+        super(ImageContextLinearModel, self).__init__()
+
+        self.in_features = in_features
+        self.image_shape = image_shape
+        if isinstance(image_shape, (tuple, list)):
+            self.image_shape = image_shape[0]
+        assert self.image_shape % 16 == 0, "Image shape should be a multiple of 16."
+        self.pretrained_opts = pretrained_opts
+        self.every_step_decision = every_step_decision
+
+        # Feature extractor
+        self.feature_extractor = nn.Sequential(*[
+            nn.Linear(self.in_features, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.ReLU(),
+        ])
+
+        # Context encoder
+        self.context_encoder = ContextEncoder(self.image_shape, hidden_dim)
+
+        # Linear layer
+        self.pre = nn.Linear(hidden_dim * 2, hidden_dim * 2)
+        self.linear = nn.Linear(hidden_dim * 2, 1, bias=False)
+
+    def forward(self, X, history):
+        if X.dim() == 2:
+            X = X.unsqueeze(1)
+        # Extracts context from history.
+        if self.every_step_decision:
+            # We use the most recent context
+            ctx = history["ctx"][-1]
+        else:
+            # We use the first context
+            ctx = history["ctx"][0]
+
+        # Repeat ctx in cases of sampling
+        ctx = ctx.repeat(len(X), 1, 1, 1)
+
+        X = self.feature_extractor(X)
+        if self.pretrained_opts.get("use", False):
+            if self.pretrained_opts.get("update", True):
+                ctx = self.context_encoder(ctx)
+            else:
+                with torch.no_grad():
+                    ctx = self.context_encoder(ctx)
+        else:
+            ctx = self.context_encoder(ctx)
+
+        ctx = ctx.unsqueeze(1)
+
+        X = torch.cat((X, ctx), dim=-1)
+
+        X = nn.functional.relu(self.pre(X))
+        return self.linear(X)
+
+    def load_pretrained(self, path="./pre-trained/model.pt"):
+        """
+        Loads a context encoder model
+        """
+
+        def gattr(obj, names):
+            if len(names) == 1:
+                return getattr(obj, names[0])
+            else:
+                return gattr(getattr(obj, names[0]), names[1:])
+
+        def sattr(obj, names, val):
+            if len(names) == 1:
+                return setattr(obj, names[0], val)
+            else:
+                return sattr(getattr(obj, names[0]), names[1:], val)
+
+        model = torch.load(path, map_location=lambda storage, loc: storage)
+        if not isinstance(model, (OrderedDict, dict)):
+            model = model.model.state_dict()
+
+        new_state_dict = {}
+        for key, value in model.items():
+            current = gattr(self, key.split("."))
+            if current.shape == value.shape:
+                new_state_dict[key] = value
+
+        missing_keys, unexpected_keys = self.load_state_dict(new_state_dict, strict=False)
+
+class LSTMLinearModel(nn.Module):
     def __init__(self, in_features, hidden_dim=32):
-        super(LinearLSTMModel, self).__init__()
+        super(LSTMLinearModel, self).__init__()
 
         self.hidden_dim = hidden_dim
         context_features = 1

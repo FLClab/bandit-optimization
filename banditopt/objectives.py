@@ -89,9 +89,11 @@ class Signal_Ratio(Objective):
 
         """
         if numpy.any(sted_fg):
-            foreground = numpy.percentile(sted_stack[0][sted_fg], self.percentile)
-            background = numpy.mean(sted_stack[0][numpy.invert(sted_fg)])
-            ratio = (foreground - background) / numpy.percentile(confocal_init[confocal_fg], self.percentile)
+            # foreground = numpy.percentile(sted_stack[0][confocal_fg], self.percentile)
+            foreground = numpy.mean(sted_stack[0][confocal_fg])
+            # background = numpy.mean(sted_stack[0][numpy.invert(sted_fg)])
+            # ratio = (foreground - background) / numpy.percentile(confocal_init[confocal_fg], self.percentile)
+            ratio = foreground / numpy.percentile(confocal_init[confocal_fg], self.percentile)
             if ratio < 0:
                 return None
             else:
@@ -437,7 +439,7 @@ class Squirrel(Objective):
         # Optimize
         result = self.optimize(sted_stack[0], confocal_init)
         if self.use_foreground:
-            return 1.0 - self.squirrel(result.x, sted_stack[0], confocal_init, confocal_fg=confocal_fg)
+            return 1.0 - self.out_squirrel(result.x, sted_stack[0], confocal_init, confocal_fg=confocal_fg)
         else:
             return 1.0 - self.out_squirrel(result.x, sted_stack[0], confocal_init)
 
@@ -470,7 +472,8 @@ class Squirrel(Objective):
             convolved = (convolved - convolved.min()) / (convolved.max() - convolved.min() + 1e-9)
 #         error = numpy.mean(numpy.abs(reference[confocal_fg] - convolved[confocal_fg]))
 #         error = numpy.std(numpy.abs(reference[confocal_fg] - convolved[confocal_fg]))
-        error = structural_similarity(reference, convolved)
+        _, S = structural_similarity(reference, convolved, full=True)
+        error = numpy.mean(S[confocal_fg])
         return error
 
     def optimize(self, super_resolution, reference):
@@ -484,7 +487,7 @@ class Squirrel(Objective):
         """
         result = optimize.minimize(
             self.squirrel, self.x0, args=(super_resolution, reference),
-            method="L-BFGS-B", bounds=(self.bounds)
+            method=self.method, bounds=(self.bounds)
         )
         return result
 

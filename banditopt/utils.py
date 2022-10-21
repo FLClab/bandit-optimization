@@ -482,6 +482,11 @@ def NSGAII(optim_func, BOUND_LOW, BOUND_UP, weights, NGEN=250, MU=100,
     if isinstance(pop, type(None)):
         pop = toolbox.population(n=MU)
     else:
+        # Generates a random population to ensure diversity
+        random_pop = toolbox.population(n=int(kwargs.get("percent-replace") * MU))
+        for i, random_ind in enumerate(random_pop):
+            pop[i] = random_ind
+        # Removes previous fitness from individuals
         for ind in pop:
             del ind.fitness.values
 

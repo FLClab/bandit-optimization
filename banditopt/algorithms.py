@@ -19,7 +19,7 @@ from torch import nn, optim
 from tqdm.auto import trange, tqdm
 from collections import defaultdict
 
-from .models import LinearModel, LinearLSTMModel
+from .models import LinearModel, LSTMLinearModel, ContextLinearModel, ImageContextLinearModel
 
 import copy
 
@@ -28,6 +28,9 @@ from sklearn.preprocessing import StandardScaler
 from inspect import currentframe, getframeinfo
 
 def to_cuda(elements):
+    """
+    Recursively sends data to GPU
+    """
     if isinstance(elements, (tuple)):
         elements = list(elements)
     if isinstance(elements, (list)):
@@ -559,11 +562,11 @@ class LinearBanditDiag:
         params = torch.load(os.path.join(path, savename), map_location="cpu")
         self.update_params(**vars(params))
 
-        self.model.load_state_dict(params.model.state_dict())
+        # self.model.load_state_dict(params.model.state_dict())
 
-class LinearLSTMBanditDiag(LinearBanditDiag):
+class ContextualLinearBanditDiag(LinearBanditDiag):
     """
-    Implements a `LinearLSTMBanditDiag` solver. This solver automatically learns the
+    Implements a `ContextualLinearBanditDiag` solver. This solver automatically learns the
     features to extract using a NN model.
 
     This code comes from https://github.com/ZeroWeight/NeuralTS/blob/master/learner_diag_linear.py
@@ -571,9 +574,13 @@ class LinearLSTMBanditDiag(LinearBanditDiag):
     def __init__(
             self, n_features, n_hidden_dim=32, param_space_bounds=None,
             _lambda=1, nu=1, style="TS", learning_rate=1e-2, update_exploration=False,
+            ctx_features=1,
             *args, **kwargs
         ):
-        super(LinearLSTMBanditDiag, self).__init__(
+        self.ctx_features = ctx_features
+        self.every_step_decision = kwargs.get("every-step-decision", False)
+
+        super(ContextualLinearBanditDiag, self).__init__(
             n_features, n_hidden_dim, param_space_bounds, _lambda, nu, style,
             learning_rate, update_exploration, *args, **kwargs
         )
@@ -583,7 +590,261 @@ class LinearLSTMBanditDiag(LinearBanditDiag):
 
     def reset(self):
         self.histories = []
-        self.model = LinearLSTMModel(self.n_features, self.n_hidden_dim)
+        self.model = ContextLinearModel(self.n_features + self.ctx_features, self.n_hidden_dim, every_step_decision=self.every_step_decision)
+        self.total_param = sum(p.numel() for key, p in self.model.named_parameters() if (p.requires_grad) and ("linear" in key))
+        self.U = self._lambda * torch.ones((self.total_param,))
+        if torch.cuda.is_available():
+            self.model = self.model.cuda()
+            self.U = self.U.cuda()
+
+    def update(self, X, y, history, weights=None, *args, **kwargs):
+        """
+        Updates the weights of the model
+
+        :param X: A `numpy.ndarray` of points with shape (N, features)
+        :param y: A `numpy.ndarray` of observed rewards
+        """
+        self.clear_cache()
+        if self.update_exploration:
+            self.nu = max(self.default_nu * 1 / numpy.sqrt(len(X)), 1e-4)
+            self._lambda = max(self.default_lambda * 1 / numpy.sqrt(len(X)), 1e-4)
+
+        # We will be training with all the acquired histories
+        # To do so, we must recreate the sequence for each data point
+        history = copy.deepcopy(history)
+        if self.param_space_bounds is not None:
+            X = rescale_X(X, self.param_space_bounds)
+            if len(history["X"]) > 0:
+                history["X"] = rescale_X(numpy.concatenate(history["X"], axis=1).T, self.param_space_bounds)
+                history["y"] = self.scaler.fit_transform(numpy.array(history["y"]))[:, [self.idx]]
+                history["ctx"] = numpy.array(history["ctx"])
+        self.histories.append(history)
+
+        histories = []
+        for history_ in self.histories:
+            if self.every_step_decision:
+                for i in range(len(history["X"])):
+                    histories.append([
+                        history_["X"][[i]], # Keeps a [1, N] shape
+                        history_["y"][[i]], # Keeps a [1, 1] shape
+                        history_["ctx"][[i]],
+                        {
+                            "X" : history_["X"][:i],
+                            "y" : history_["y"][:i],
+                            "ctx" : history_["ctx"][:i + 1] # Uses the first context
+                        }
+                    ])
+            else:
+                histories.append([
+                    history_["X"][[0]], # Keeps a [1, N] shape
+                    history_["y"][[-1]], # Keeps a [1, 1] shape; Only last reward is kept
+                    history_["ctx"][[0]],
+                    {
+                        "X" : history_["X"][[0]],
+                        "y" : history_["y"][[-1]],
+                        "ctx" : history_["ctx"][[0]]
+                    }
+                ])
+
+        # Convert X, y to torch
+        X = torch.tensor(X, dtype=torch.float32).unsqueeze(1)
+        if torch.cuda.is_available():
+            X = X.cuda()
+            history = to_cuda(history)
+            histories = to_cuda(histories)
+
+        if self.update_gradient:
+            self.add_gradient(X, history)
+
+        optimizer = optim.SGD(self.model.parameters(), lr=self.learning_rate)
+        length = len(histories)
+        index = numpy.arange(length)
+        cnt = 0
+        tot_loss = 0
+        while True:
+            batch_loss = 0
+            numpy.random.shuffle(index)
+            for idx in index:
+                X, y, ctx, history = histories[idx]
+                optimizer.zero_grad()
+                delta = self.model(X, history) - y
+                loss = delta * delta # * weights[idx]
+                loss.backward()
+                optimizer.step()
+                batch_loss += loss.item()
+                tot_loss += loss.item()
+                cnt += 1
+                if cnt >= 1000:
+                    return tot_loss / 1000
+            if batch_loss / length <= 1e-3:
+                return batch_loss / length
+
+    def add_gradient(self, X, history):
+        """
+        Calculate the gradient on sample X and add it to the U matrix
+        """
+        y = self.model(X, history)
+        fx = y[-1]
+        self.model.zero_grad()
+        fx.backward(retain_graph=True)
+        g = torch.cat([p.grad.flatten().detach() for key, p in self.model.named_parameters() if "linear" in key])
+        self.U += g * g
+
+    def get_mean(self, X):
+        """
+        Predicts mean at the given points
+
+        :param X: A `numpy.ndarray` of points with shape (N, features)
+
+        :returns: A `numpy.ndarray` of the mean at X
+        """
+        history = copy.deepcopy(history)
+        if self.param_space_bounds is not None:
+            X = rescale_X(X, self.param_space_bounds)
+            history["X"] = rescale_X(numpy.concatenate(history["X"], axis=1).T, self.param_space_bounds)
+        X = torch.from_numpy(X).float()
+        if torch.cuda.is_available():
+            X = X.cuda()
+            for key, value in history.items():
+                value = torch.from_numpy(numpy.array(value)).float()
+                history[key] = value.cuda()
+        y = self.model(X, history)
+
+        return self.scaler.inverse_transform(y.cpu().data.numpy())
+
+    def get_mean_std(self, X):
+        """
+        Predicts mean and standard deviation at the given points
+
+        :param X: A `numpy.ndarray` of points with shape (N, features)
+
+        :returns: A `numpy.ndarray` of the mean at X
+                  A `numpy.ndarray` of the std at X
+        """
+        history = copy.deepcopy(history)
+        if self.param_space_bounds is not None:
+            X = rescale_X(X, self.param_space_bounds)
+            history["X"] = rescale_X(numpy.concatenate(history["X"], axis=1).T, self.param_space_bounds)
+        X = torch.from_numpy(X).float()
+        if torch.cuda.is_available():
+            X = X.cuda()
+            history = to_cuda(history)
+        y = self.model(X, history)
+
+        g_list = []
+        sampled = []
+        ave_sigma = 0
+        ave_rew = 0
+        for fx in y:
+            self.model.zero_grad()
+            fx.backward(retain_graph=True)
+            g = torch.cat([p.grad.flatten().detach() for key, p in self.model.named_parameters() if "linear" in key])
+            # sigma2 = self._lambda * self.nu * g * g / self.U
+            sigma2 = self._lambda * self.nu * g * g / self.U
+            sigma = torch.sqrt(torch.sum(sigma2))
+            sampled.append(sigma.item())
+
+        # TODO: Verify how to update this value properly
+        # self.U += g_list[arm] * g_list[arm]
+        std = self.scaler.inverse_transform(numpy.array(sampled)[:, numpy.newaxis], std=True)
+        return self.scaler.inverse_transform(y.cpu().data.numpy()), std
+
+    def sample(self, X, history, seed=None, *args, **kwargs):
+        """
+        Samples the function at points X
+
+        :param X: A `numpy.ndarray` of points with shape (N, features)
+        :param seed: (optional) An `int` of the random seed
+
+        :returns: A `numpy.ndarray` of the sampled function at the specified points
+        """
+        history = copy.deepcopy(history)
+        if self.param_space_bounds is not None:
+            X = rescale_X(X, self.param_space_bounds)
+            if len(history["X"]) > 0:
+                history["X"] = rescale_X(numpy.concatenate(history["X"], axis=1).T, self.param_space_bounds)
+                history["y"] = self.scaler.fit_transform(numpy.array(history["y"]))[:, [self.idx]]
+                history["ctx"] = numpy.array(history["ctx"])
+
+        X = torch.from_numpy(X).float()
+        if torch.cuda.is_available():
+            X = X.cuda()
+            history = to_cuda(history)
+        y = self.model(X, history)
+
+        g_list = []
+        sampled, sigmas = [], []
+        ave_sigma = 0
+        ave_rew = 0
+        for i, fx in enumerate(y):
+            g = self.cache(X[i], fx)
+            # self.model.zero_grad()
+            # fx.backward(retain_graph=True)
+            # g = torch.cat([p.grad.flatten().detach() for key, p in self.model.named_parameters() if "linear" in key])
+            g_list.append(g)
+
+            # sigma2 = self._lambda * self.nu * g * g / self.U
+            sigma2 = self._lambda * self.nu * g * g / self.U
+            sigma = torch.sqrt(torch.sum(sigma2))
+            if self.style == 'TS':
+                rng = numpy.random.default_rng(seed)
+                sample_r = rng.normal(loc=fx.item(), scale=sigma.item())
+            elif self.style == 'UCB':
+                sample_r = fx.item() + sigma.item()
+            else:
+                raise RuntimeError('Exploration style not set')
+            sampled.append(sample_r)
+            ave_sigma += sigma.item()
+            ave_rew += sample_r
+
+        # TODO: Verify how to update this value
+        # self.U += g_list[arm] * g_list[arm]
+        sampled = numpy.array(sampled)[:, numpy.newaxis]
+        return self.scaler.inverse_transform(sampled)
+
+class ContextualImageLinearBanditDiag(ContextualLinearBanditDiag):
+    def __init__(self, *args, **kwargs):
+
+        self.datamap_opts = kwargs.get("datamap_opts", {"shape": 64})
+        self.pretrained_opts = kwargs.get("pretrained_opts", {"use" : False})
+
+        super(ContextualImageLinearBanditDiag, self).__init__(*args, **kwargs)
+
+    def reset(self):
+        self.histories = []
+        self.model = ImageContextLinearModel(
+            self.n_features, self.datamap_opts["shape"], self.n_hidden_dim,
+            every_step_decision=self.every_step_decision, pretrained_opts=self.pretrained_opts
+        )
+        self.total_param = sum(p.numel() for key, p in self.model.named_parameters() if (p.requires_grad) and ("linear" in key))
+        self.U = self._lambda * torch.ones((self.total_param,))
+        if torch.cuda.is_available():
+            self.model = self.model.cuda()
+            self.U = self.U.cuda()
+
+class LSTMLinearBanditDiag(LinearBanditDiag):
+    """
+    Implements a `LSTMLinearBanditDiag` solver. This solver automatically learns the
+    features to extract using a NN model.
+
+    This code comes from https://github.com/ZeroWeight/NeuralTS/blob/master/learner_diag_linear.py
+    """
+    def __init__(
+            self, n_features, n_hidden_dim=32, param_space_bounds=None,
+            _lambda=1, nu=1, style="TS", learning_rate=1e-2, update_exploration=False,
+            *args, **kwargs
+        ):
+        super(LSTMLinearBanditDiag, self).__init__(
+            n_features, n_hidden_dim, param_space_bounds, _lambda, nu, style,
+            learning_rate, update_exploration, *args, **kwargs
+        )
+
+        self.histories = []
+        self.idx = kwargs.get("idx")
+
+    def reset(self):
+        self.histories = []
+        self.model = LSTMLinearModel(self.n_features, self.n_hidden_dim)
         self.total_param = sum(p.numel() for key, p in self.model.named_parameters() if (p.requires_grad) and ("linear" in key))
         self.U = self._lambda * torch.ones((self.total_param,))
         if torch.cuda.is_available():
@@ -795,6 +1056,7 @@ class TS_sampler():
         self.X = None
         self.y = None
         self.weights = None
+        self.loaded = False
 
     def predict(self, X_pred, *args, **kwargs):
         """Predict mean and standard deviation at given points *X_pred*.
@@ -802,7 +1064,7 @@ class TS_sampler():
         :param X_pred: A 2d array of locations at which to predict.
         :returns: An array of means and an array of standard deviations.
         """
-        if self.X is not None:
+        if (self.X is not None) or self.loaded:
             return self.regressor.get_mean_std(X_pred, *args, **kwargs)
         else :
             mean = np.full(X_pred.shape[0], 0)
@@ -816,7 +1078,7 @@ class TS_sampler():
         :param X_sample: A 2d array locations at which to evaluate the sampled function.
         :returns: A 1-D array of the pointwise evaluation of a sampled function.
         """
-        if self.X is not None:
+        if (self.X is not None) or (self.loaded):
             return self.regressor.sample(X_sample, seed=seed, *args, **kwargs)
         else:
 #             mean= np.full(X_sample.shape[0], 0)
@@ -861,4 +1123,5 @@ class TS_sampler():
         """
         Loads a checkpoint of the model
         """
+        self.loaded = True
         self.regressor.load_ckpt(path=path, *args, **kwargs)
