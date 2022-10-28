@@ -24,9 +24,11 @@ class ContextEncoder(nn.Module):
             nn.AdaptiveAvgPool2d((1, 1)),
             nn.ReLU(),
             nn.Flatten(),
+            nn.Dropout(p=0.2),
             # nn.Linear(16*(self.shape//16)*(self.shape//16), n_hidden_dim),
             nn.Linear(16, n_hidden_dim),
             nn.ReLU(),
+            nn.Dropout(p=0.2)
         ])
 
     def forward(self, x):
@@ -40,8 +42,10 @@ class LinearModel(nn.Module):
         self.feature_extractor = nn.Sequential(*[
             nn.Linear(in_features, hidden_dim),
             nn.ReLU(),
+            nn.Dropout(p=0.2),
             nn.Linear(hidden_dim, hidden_dim),
             nn.ReLU(),
+            nn.Dropout(p=0.2),
         ])
 
         # Linear layer
@@ -96,8 +100,10 @@ class ImageContextLinearModel(nn.Module):
         self.feature_extractor = nn.Sequential(*[
             nn.Linear(self.in_features, hidden_dim),
             nn.ReLU(),
+            nn.Dropout(p=0.2),
             nn.Linear(hidden_dim, hidden_dim),
             nn.ReLU(),
+            nn.Dropout(p=0.2),
         ])
 
         # Context encoder
@@ -108,6 +114,15 @@ class ImageContextLinearModel(nn.Module):
         self.linear = nn.Linear(hidden_dim * 2, 1, bias=False)
 
     def forward(self, X, history):
+        if self.training:
+            X = self.extract_features(X, history)
+        else:
+            with torch.no_grad():
+                X = self.extract_features(X, history)
+
+        return self.linear(X)
+
+    def extract_features(self, X, history):
         if X.dim() == 2:
             X = X.unsqueeze(1)
         # Extracts context from history.
@@ -118,10 +133,12 @@ class ImageContextLinearModel(nn.Module):
             # We use the first context
             ctx = history["ctx"][0]
 
-        # Repeat ctx in cases of sampling
-        ctx = ctx.repeat(len(X), 1, 1, 1)
-
         X = self.feature_extractor(X)
+
+        # Since context is constant we only calculate with a single ctx
+        if ctx.dim() == 3:
+            # Ensures ctx is 4 dimensions [batch, channels, height, width]
+            ctx = ctx.unsqueeze(0)
         if self.pretrained_opts.get("use", False):
             if self.pretrained_opts.get("update", True):
                 ctx = self.context_encoder(ctx)
@@ -131,12 +148,13 @@ class ImageContextLinearModel(nn.Module):
         else:
             ctx = self.context_encoder(ctx)
 
-        ctx = ctx.unsqueeze(1)
-
+        # Repeat ctx in cases of sampling and concatenates with parameter features
+        ctx = ctx.repeat(len(X), 1, 1)
         X = torch.cat((X, ctx), dim=-1)
 
         X = nn.functional.relu(self.pre(X))
-        return self.linear(X)
+
+        return X
 
     def load_pretrained(self, path="./pre-trained/model.pt"):
         """

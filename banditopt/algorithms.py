@@ -110,14 +110,19 @@ class MO_function_sample():
             return list(map(tuple, ys.T))
 
 def rescale_X(X, param_space_bounds):
+    param_space_bounds = numpy.array(param_space_bounds).T
+    xmin, xmax = param_space_bounds
+    xmean = (xmax + xmin) / 2
     if X.ndim != 2:
         return []
-    X = copy.deepcopy(X)
-    for col in range(X.shape[1]):
-        xmin, xmax = param_space_bounds[col]
-        xmean = (xmax+xmin)/2
-        X[:,col] = (X[:,col] - xmean)/(0.5 * (xmax - xmin))
+    X = (X - xmean[numpy.newaxis]) / (0.5 * (xmax - xmin)[numpy.newaxis])
     return X
+    # X = copy.deepcopy(X)
+    # for col in range(X.shape[1]):
+    #     xmin, xmax = param_space_bounds[col]
+    #     xmean = (xmax+xmin)/2
+    #     X[:,col] = (X[:,col] - xmean)/(0.5 * (xmax - xmin))
+    # return X
 
 class sklearn_GP(GaussianProcessRegressor):
     """This class is meant to be used as a the regressor argument of the TS_sampler
@@ -310,6 +315,8 @@ class LinearBanditDiag:
         :param X: A `numpy.ndarray` of points with shape (N, features)
         :param y: A `numpy.ndarray` of observed rewards
         """
+        self.model.train()
+
         self.clear_cache()
 
         if self.update_exploration:
@@ -385,6 +392,7 @@ class LinearBanditDiag:
 
         :returns: A `numpy.ndarray` of the mean at X
         """
+        self.model.eval()
         if self.param_space_bounds is not None:
             X = rescale_X(X, self.param_space_bounds)
         X = torch.from_numpy(X).float()
@@ -402,6 +410,7 @@ class LinearBanditDiag:
         :returns: A `numpy.ndarray` of the mean at X
                   A `numpy.ndarray` of the std at X
         """
+        self.model.eval()
         if self.param_space_bounds is not None:
             X = rescale_X(X, self.param_space_bounds)
         X = torch.from_numpy(X).float()
@@ -435,6 +444,7 @@ class LinearBanditDiag:
 
         :returns: A `numpy.ndarray` of the sampled function at the specified points
         """
+        self.model.eval()
         if self.param_space_bounds is not None:
             X = rescale_X(X, self.param_space_bounds)
         X = torch.from_numpy(X).float()
@@ -604,6 +614,8 @@ class ContextualLinearBanditDiag(LinearBanditDiag):
         :param X: A `numpy.ndarray` of points with shape (N, features)
         :param y: A `numpy.ndarray` of observed rewards
         """
+        self.model.train()
+
         self.clear_cache()
         if self.update_exploration:
             self.nu = max(self.default_nu * 1 / numpy.sqrt(len(X)), 1e-4)
@@ -698,6 +710,8 @@ class ContextualLinearBanditDiag(LinearBanditDiag):
 
         :returns: A `numpy.ndarray` of the mean at X
         """
+        self.model.eval()
+
         history = copy.deepcopy(history)
         if self.param_space_bounds is not None:
             X = rescale_X(X, self.param_space_bounds)
@@ -721,6 +735,8 @@ class ContextualLinearBanditDiag(LinearBanditDiag):
         :returns: A `numpy.ndarray` of the mean at X
                   A `numpy.ndarray` of the std at X
         """
+        self.model.eval()
+
         history = copy.deepcopy(history)
         if self.param_space_bounds is not None:
             X = rescale_X(X, self.param_space_bounds)
@@ -758,6 +774,8 @@ class ContextualLinearBanditDiag(LinearBanditDiag):
 
         :returns: A `numpy.ndarray` of the sampled function at the specified points
         """
+        self.model.eval()
+
         history = copy.deepcopy(history)
         if self.param_space_bounds is not None:
             X = rescale_X(X, self.param_space_bounds)
