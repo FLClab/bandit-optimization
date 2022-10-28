@@ -47,6 +47,25 @@ def to_cuda(elements):
             return elements
     return elements
 
+def to_tensor(elements):
+    """
+    Recursively sends data to GPU
+    """
+    if isinstance(elements, (tuple)):
+        elements = list(elements)
+    if isinstance(elements, (list)):
+        for i, element in enumerate(elements):
+            elements[i] = to_tensor(element)
+    elif isinstance(elements, dict):
+        for key, value in elements.items():
+            elements[key] = to_tensor(value)
+    else:
+        if isinstance(elements, numpy.ndarray):
+            elements = torch.tensor(elements, dtype=torch.float32)
+        if isinstance(elements, torch.Tensor):
+            return elements
+    return elements
+
 class Scaler:
     def __init__(self, _min, _max):
         if isinstance(_min, type(None)):
@@ -660,6 +679,8 @@ class ContextualLinearBanditDiag(LinearBanditDiag):
 
         # Convert X, y to torch
         X = torch.tensor(X, dtype=torch.float32).unsqueeze(1)
+        history = to_tensor(history)
+        histories = to_tensor(histories)
         if torch.cuda.is_available():
             X = X.cuda()
             history = to_cuda(history)
@@ -717,6 +738,7 @@ class ContextualLinearBanditDiag(LinearBanditDiag):
             X = rescale_X(X, self.param_space_bounds)
             history["X"] = rescale_X(numpy.concatenate(history["X"], axis=1).T, self.param_space_bounds)
         X = torch.from_numpy(X).float()
+        history = to_tensor(history)
         if torch.cuda.is_available():
             X = X.cuda()
             for key, value in history.items():
@@ -742,6 +764,7 @@ class ContextualLinearBanditDiag(LinearBanditDiag):
             X = rescale_X(X, self.param_space_bounds)
             history["X"] = rescale_X(numpy.concatenate(history["X"], axis=1).T, self.param_space_bounds)
         X = torch.from_numpy(X).float()
+        history = to_tensor(history)
         if torch.cuda.is_available():
             X = X.cuda()
             history = to_cuda(history)
@@ -785,6 +808,7 @@ class ContextualLinearBanditDiag(LinearBanditDiag):
                 history["ctx"] = numpy.array(history["ctx"])
 
         X = torch.from_numpy(X).float()
+        history = to_tensor(history)
         if torch.cuda.is_available():
             X = X.cuda()
             history = to_cuda(history)
