@@ -414,7 +414,7 @@ class Squirrel(Objective):
 
         self.label = "Squirrel"
         self.method = method
-        self.bounds = (-numpy.inf, numpy.inf), (-numpy.inf, numpy.inf), (0, numpy.inf)
+        self.bounds = (-1e+6, 1e+6), (-1e+6, 1e+6), (0, 1e+2)
         self.x0 = (1, 0, 1)
         self.normalize = normalize
         self.select_optimal = numpy.argmin

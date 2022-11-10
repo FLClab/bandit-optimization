@@ -113,8 +113,13 @@ def rescale_X(X, param_space_bounds):
     param_space_bounds = numpy.array(param_space_bounds).T
     xmin, xmax = param_space_bounds
     xmean = (xmax + xmin) / 2
-    if X.ndim != 2:
+    if X.ndim < 2:
         return []
+    if X.ndim == 3:
+        xmean, xmax, xmin = xmean[numpy.newaxis], xmax[numpy.newaxis], xmin[numpy.newaxis]
+    if isinstance(X, torch.Tensor):
+        xmean, xmax, xmin = torch.tensor(xmean, dtype=torch.float32), torch.tensor(xmax, dtype=torch.float32), torch.tensor(xmin, dtype=torch.float32)
+        return (X - xmean.unsqueeze(0)) / (0.5 * (xmax - xmin).unsqueeze(0))
     X = (X - xmean[numpy.newaxis]) / (0.5 * (xmax - xmin)[numpy.newaxis])
     return X
     # X = copy.deepcopy(X)
@@ -175,6 +180,9 @@ class sklearn_GP(GaussianProcessRegressor):
         f_tilde = rng.multivariate_normal(mean.flatten(), cov, method='eigh')[:,numpy.newaxis]
         f_tilde = self.scaler.inverse_transform(f_tilde)
         return f_tilde
+
+    def set_sampling_mode(self, is_sampling):
+        pass
 
 class sklearn_BayesRidge(BayesianRidge):
     """This class is meant to be used as a the regressor argument of the TS_sampler
@@ -247,7 +255,6 @@ class sklearn_BayesRidge(BayesianRidge):
         else:
             return mean, std
 
-
     def sample(self, X, seed=None):
         """Sample a function evaluated at points *X*.
 
@@ -264,6 +271,9 @@ class sklearn_BayesRidge(BayesianRidge):
             X = PolynomialFeatures(self.degree).fit_transform(X)
             y = X@w_sample[:,np.newaxis]
             return self.scaler.inverse_transform(y)
+
+    def set_sampling_mode(self, is_sampling):
+        pass
 
 class LinearBanditDiag:
     """
@@ -525,6 +535,14 @@ class LinearBanditDiag:
         if torch.cuda.is_available():
             self.U = self.U.cuda()
 
+    def set_sampling_mode(self, is_sampling):
+        """
+        Activates/Deactivates the sampling mode of the model
+
+        :param is_sampling: A `boolean` if the model is in sampling mode
+        """
+        self.model.sampling(is_sampling)
+
     def update_params(self, **kwargs):
         """
         Updates the regressor parameters
@@ -589,6 +607,8 @@ class ContextualLinearBanditDiag(LinearBanditDiag):
         ):
         self.ctx_features = ctx_features
         self.every_step_decision = kwargs.get("every-step-decision", False)
+        self.pretrained_opts = kwargs.get("pretrained_opts", {"use" : False})
+        self.teacher_opts = kwargs.get("teacher_opts", {"use" : False})
 
         super(ContextualLinearBanditDiag, self).__init__(
             n_features, n_hidden_dim, param_space_bounds, _lambda, nu, style,
@@ -629,7 +649,7 @@ class ContextualLinearBanditDiag(LinearBanditDiag):
             if len(history["X"]) > 0:
                 history["X"] = rescale_X(numpy.concatenate(history["X"], axis=1).T, self.param_space_bounds)
                 history["y"] = self.scaler.fit_transform(numpy.array(history["y"]))[:, [self.idx]]
-                history["ctx"] = numpy.array(history["ctx"])
+        history["ctx"] = numpy.array(history["ctx"])[:, 0] # Keeps first channel image
         self.histories.append(history)
 
         histories = []
@@ -668,18 +688,48 @@ class ContextualLinearBanditDiag(LinearBanditDiag):
         if self.update_gradient:
             self.add_gradient(X, history)
 
-        optimizer = optim.SGD(self.model.parameters(), lr=self.learning_rate)
+        # optimizer = optim.SGD(self.model.parameters(), lr=self.learning_rate)
+        # length = len(histories)
+        # index = numpy.arange(length)
+        # cnt = 0
+        # tot_loss = 0
+        # while True:
+        #     batch_loss = 0
+        #     numpy.random.shuffle(index)
+        #     for idx in index:
+        #         X, y, ctx, history = histories[idx]
+        #         optimizer.zero_grad()
+        #         delta = self.model(X, history) - y
+        #         loss = delta * delta # * weights[idx]
+        #         loss.backward()
+        #         optimizer.step()
+        #         batch_loss += loss.item()
+        #         tot_loss += loss.item()
+        #         cnt += 1
+        #         if cnt >= 1000:
+        #             return tot_loss / 1000
+        #     if batch_loss / length <= 1e-3:
+        #         return batch_loss / length
+
+        if self.teacher_opts["use"]:
+            model = self.teacher_model
+            model.train()
+        else:
+            model = self.model
+
+        optimizer = optim.SGD(model.parameters(), lr=self.learning_rate)
         length = len(histories)
         index = numpy.arange(length)
         cnt = 0
         tot_loss = 0
-        while True:
+        flag = False
+        while not flag:
             batch_loss = 0
             numpy.random.shuffle(index)
             for idx in index:
                 X, y, ctx, history = histories[idx]
                 optimizer.zero_grad()
-                delta = self.model(X, history) - y
+                delta = model(X, history) - y
                 loss = delta * delta # * weights[idx]
                 loss.backward()
                 optimizer.step()
@@ -687,9 +737,30 @@ class ContextualLinearBanditDiag(LinearBanditDiag):
                 tot_loss += loss.item()
                 cnt += 1
                 if cnt >= 1000:
-                    return tot_loss / 1000
+                    flag = True
+                    break
+                    # return tot_loss / 1000
             if batch_loss / length <= 1e-3:
-                return batch_loss / length
+                flag = True
+                # return batch_loss / length
+
+            if flag:
+                break
+
+        # Updates the model with the teacher model using a moving average
+        def _soft_update(
+            q_network_1: nn.Module,
+            q_network_2: nn.Module,
+            alpha: float
+        ) -> None:
+            """In-place, soft-update of q_network_1 parameters with parameters from q_network_2."""
+            for p1, p2 in zip(q_network_1.parameters(), q_network_2.parameters()):
+                p1.data.copy_(alpha * p2.data + (1 - alpha) * p1.data)
+
+        if self.teacher_opts["use"]:
+            _soft_update(self.model, self.teacher_model, alpha=self.teacher_opts["alpha"])
+
+        return tot_loss / cnt
 
     def add_gradient(self, X, history):
         """
@@ -701,6 +772,160 @@ class ContextualLinearBanditDiag(LinearBanditDiag):
         fx.backward(retain_graph=True)
         g = torch.cat([p.grad.flatten().detach() for key, p in self.model.named_parameters() if "linear" in key])
         self.U += g * g
+
+    def train_batch(self, X, y, history, *args, **kwargs):
+        self.model.train()
+
+        self.histories = []
+
+        self.clear_cache()
+        if self.update_exploration:
+            self.nu = max(self.default_nu * 1 / numpy.sqrt(len(X)), 1e-4)
+            self._lambda = max(self.default_lambda * 1 / numpy.sqrt(len(X)), 1e-4)
+
+        # We will be training with all the acquired histories
+        # To do so, we must recreate the sequence for each data point
+        history = copy.deepcopy(history)
+        if self.param_space_bounds is not None:
+            X = rescale_X(X, self.param_space_bounds)
+
+            if len(history["X"]) > 0:
+                history["X"] = rescale_X(history["X"], self.param_space_bounds)
+                history["y"] = self.scaler.fit_transform(history["y"])[..., [self.idx]]
+                history["ctx"] = history["ctx"]
+                for key, value in history.items():
+                    history[key] = value.to(torch.float32)
+
+        self.histories.append(history)
+
+        histories = []
+        for history_ in self.histories:
+            if self.every_step_decision:
+                for i in range(len(history["X"])):
+                    histories.append([
+                        history_["X"][:, [i]], # Keeps a [1, N] shape
+                        history_["y"][:, [i]], # Keeps a [1, 1] shape
+                        history_["ctx"][[i]],
+                        {
+                            "X" : history_["X"][:, :i],
+                            "y" : history_["y"][:, :i],
+                            "ctx" : history_["ctx"][:, :i + 1] # Uses the first context
+                        }
+                    ])
+            else:
+                histories.append([
+                    history_["X"][:, [0]], # Keeps a [1, N] shape
+                    history_["y"][:, [-1]], # Keeps a [1, 1] shape; Only last reward is kept
+                    history_["ctx"][:, [0]],
+                    {
+                        "X" : history_["X"][:, [0]],
+                        "y" : history_["y"][:, [-1]],
+                        "ctx" : history_["ctx"][:, [0]]
+                    }
+                ])
+
+        # Convert X, y to torch
+        if torch.cuda.is_available():
+            X = to_cuda(X)
+            history = to_cuda(history)
+            histories = to_cuda(histories)
+
+        # if self.update_gradient:
+        #     self.add_gradient(X, history)
+
+        criterion = kwargs.get("criterion", nn.MSELoss())
+        optimizer = kwargs.get("optimizer", optim.SGD(self.model.parameters(), lr=self.learning_rate))
+        length = len(histories)
+        index = numpy.arange(length)
+
+        numpy.random.shuffle(index)
+        batch_loss = 0
+        for idx in index:
+            X, y, ctx, history = histories[idx]
+            optimizer.zero_grad()
+            pred = self.model(X, history)
+            loss = criterion(pred, y)
+            loss.backward()
+            optimizer.step()
+
+            batch_loss += loss.item()
+
+        return batch_loss
+
+    def predict_batch(self, X, y, history, *args, **kwargs):
+        self.model.eval()
+
+        self.histories = []
+
+        self.clear_cache()
+        if self.update_exploration:
+            self.nu = max(self.default_nu * 1 / numpy.sqrt(len(X)), 1e-4)
+            self._lambda = max(self.default_lambda * 1 / numpy.sqrt(len(X)), 1e-4)
+
+        # We will be training with all the acquired histories
+        # To do so, we must recreate the sequence for each data point
+        history = copy.deepcopy(history)
+        if self.param_space_bounds is not None:
+            X = rescale_X(X, self.param_space_bounds)
+
+            if len(history["X"]) > 0:
+                history["X"] = rescale_X(history["X"], self.param_space_bounds)
+                history["y"] = self.scaler.fit_transform(history["y"])[..., [self.idx]]
+                history["ctx"] = history["ctx"]
+                for key, value in history.items():
+                    history[key] = value.to(torch.float32)
+
+        self.histories.append(history)
+
+        histories = []
+        for history_ in self.histories:
+            if self.every_step_decision:
+                for i in range(len(history["X"])):
+                    histories.append([
+                        history_["X"][:, [i]], # Keeps a [1, N] shape
+                        history_["y"][:, [i]], # Keeps a [1, 1] shape
+                        history_["ctx"][[i]],
+                        {
+                            "X" : history_["X"][:, :i],
+                            "y" : history_["y"][:, :i],
+                            "ctx" : history_["ctx"][:, :i + 1] # Uses the first context
+                        }
+                    ])
+            else:
+                histories.append([
+                    history_["X"][:, [0]], # Keeps a [1, N] shape
+                    history_["y"][:, [-1]], # Keeps a [1, 1] shape; Only last reward is kept
+                    history_["ctx"][:, [0]],
+                    {
+                        "X" : history_["X"][:, [0]],
+                        "y" : history_["y"][:, [-1]],
+                        "ctx" : history_["ctx"][:, [0]]
+                    }
+                ])
+
+        # Convert X, y to torch
+        if torch.cuda.is_available():
+            X = to_cuda(X)
+            history = to_cuda(history)
+            histories = to_cuda(histories)
+
+        # if self.update_gradient:
+        #     self.add_gradient(X, history)
+
+        criterion = kwargs.get("criterion", nn.MSELoss())
+        length = len(histories)
+        index = numpy.arange(length)
+
+        numpy.random.shuffle(index)
+        batch_loss = 0
+        for idx in index:
+            X, y, ctx, history = histories[idx]
+            pred = self.model(X, history)
+            loss = criterion(pred, y)
+
+            batch_loss += loss.item()
+
+        return batch_loss
 
     def get_mean(self, X):
         """
@@ -782,12 +1007,13 @@ class ContextualLinearBanditDiag(LinearBanditDiag):
             if len(history["X"]) > 0:
                 history["X"] = rescale_X(numpy.concatenate(history["X"], axis=1).T, self.param_space_bounds)
                 history["y"] = self.scaler.fit_transform(numpy.array(history["y"]))[:, [self.idx]]
-                history["ctx"] = numpy.array(history["ctx"])
+        history["ctx"] = numpy.array(history["ctx"])[:, 0] # Keeps first channel image
 
         X = torch.from_numpy(X).float()
         if torch.cuda.is_available():
             X = X.cuda()
             history = to_cuda(history)
+
         y = self.model(X, history)
 
         g_list = []
@@ -825,6 +1051,7 @@ class ContextualImageLinearBanditDiag(ContextualLinearBanditDiag):
 
         self.datamap_opts = kwargs.get("datamap_opts", {"shape": 64})
         self.pretrained_opts = kwargs.get("pretrained_opts", {"use" : False})
+        self.teacher_opts = kwargs.get("teacher_opts", {"use" : False})
 
         super(ContextualImageLinearBanditDiag, self).__init__(*args, **kwargs)
 
@@ -834,6 +1061,14 @@ class ContextualImageLinearBanditDiag(ContextualLinearBanditDiag):
             self.n_features, self.datamap_opts["shape"], self.n_hidden_dim,
             every_step_decision=self.every_step_decision, pretrained_opts=self.pretrained_opts
         )
+        if self.teacher_opts["use"]:
+            self.teacher_model = ImageContextLinearModel(
+                self.n_features, self.datamap_opts["shape"], self.n_hidden_dim,
+                every_step_decision=self.every_step_decision, pretrained_opts=self.pretrained_opts
+            )
+            if torch.cuda.is_available():
+                self.teacher_model = self.teacher_model.cuda()
+
         self.total_param = sum(p.numel() for key, p in self.model.named_parameters() if (p.requires_grad) and ("linear" in key))
         self.U = self._lambda * torch.ones((self.total_param,))
         if torch.cuda.is_available():
@@ -1125,11 +1360,31 @@ class TS_sampler():
         if update_posterior:
             self.regressor.update(self.X, self.y, weights=self.weights, *args, **kwargs)
 
+    def train_batch(self, batch_action, batch_reward, *args, **kwargs):
+        """Update the regression model using the observations *reward* acquired at
+        location *action*.
+        """
+        return self.regressor.train_batch(batch_action, batch_reward, *args, **kwargs)
+
+    def predict_batch(self, batch_action, batch_reward, *args, **kwargs):
+        """Update the regression model using the observations *reward* acquired at
+        location *action*.
+        """
+        return self.regressor.predict_batch(batch_action, batch_reward, *args, **kwargs)
+
     def update_params(self, **kwargs):
         """
         Update the regressor parameters
         """
         self.regressor.update_params(**kwargs)
+
+    def set_sampling_mode(self, is_sampling):
+        """
+        Activates/Deactivates the sampling mode of the model
+
+        :param is_sampling: A `boolean` if the sampling mode is activated
+        """
+        self.regressor.set_sampling_mode(is_sampling)
 
     def save_ckpt(self, path, *args, **kwargs):
         """
