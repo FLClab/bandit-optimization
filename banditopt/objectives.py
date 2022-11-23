@@ -13,6 +13,7 @@ from statsmodels.tsa.stattools import acf
 from scipy.ndimage import gaussian_filter
 from scipy import optimize
 from skimage.transform import resize
+from skimage.feature import peak_local_max
 from skimage.metrics import structural_similarity
 from sklearn.metrics import mean_squared_error
 
@@ -276,6 +277,8 @@ class FWHMResolution(Objective):
 
     def evaluate(self, sted_stack, confocal_init, confocal_end, sted_fg, confocal_fg, *args, **kwargs):
         positions = kwargs.get("positions", None)
+        if not isinstance(positions, type(None)) and len(positions) < 1:
+            positions = peak_local_max(confocal_init, min_distance=10, threshold_rel=0.5)
         return self.get_resolution(sted_stack[0], positions) * 1e+9
 
     def get_resolution(self, emitter, positions, delta=4, avg=2):

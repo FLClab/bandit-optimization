@@ -948,6 +948,83 @@ class ContextualLinearBanditDiag(LinearBanditDiag):
 
         return batch_loss
 
+    def add_gradient_batch(self, X, y, history, *args, **kwargs):
+        """
+        Calculate the gradient on sample X and add it to the U matrix
+        """
+
+        self.model.eval()
+
+        self.histories = []
+
+        self.clear_cache()
+        if self.update_exploration:
+            self.nu = max(self.default_nu * 1 / numpy.sqrt(len(X)), 1e-4)
+            self._lambda = max(self.default_lambda * 1 / numpy.sqrt(len(X)), 1e-4)
+
+        # We will be training with all the acquired histories
+        # To do so, we must recreate the sequence for each data point
+        history = copy.deepcopy(history)
+        if self.param_space_bounds is not None:
+            X = rescale_X(X, self.param_space_bounds)
+
+            if len(history["X"]) > 0:
+                history["X"] = rescale_X(history["X"], self.param_space_bounds)
+                history["y"] = self.scaler.fit_transform(history["y"])[..., [self.idx]]
+                history["ctx"] = history["ctx"]
+                for key, value in history.items():
+                    history[key] = value.to(torch.float32)
+
+        self.histories.append(history)
+
+        histories = []
+        for history_ in self.histories:
+            if self.every_step_decision:
+                for i in range(len(history["X"])):
+                    histories.append([
+                        history_["X"][:, [i]], # Keeps a [1, N] shape
+                        history_["y"][:, [i]], # Keeps a [1, 1] shape
+                        history_["ctx"][[i]],
+                        {
+                            "X" : history_["X"][:, :i],
+                            "y" : history_["y"][:, :i],
+                            "ctx" : history_["ctx"][:, :i + 1] # Uses the first context
+                        }
+                    ])
+            else:
+                histories.append([
+                    history_["X"][:, [0]], # Keeps a [1, N] shape
+                    history_["y"][:, [-1]], # Keeps a [1, 1] shape; Only last reward is kept
+                    history_["ctx"][:, [0]],
+                    {
+                        "X" : history_["X"][:, [0]],
+                        "y" : history_["y"][:, [-1]],
+                        "ctx" : history_["ctx"][:, [0]]
+                    }
+                ])
+
+        # Convert X, y to torch
+        if torch.cuda.is_available():
+            X = to_cuda(X)
+            history = to_cuda(history)
+            histories = to_cuda(histories)
+
+        length = len(histories)
+        index = numpy.arange(length)
+
+        numpy.random.shuffle(index)
+        batch_loss = 0
+        for idx in index:
+            X, y, ctx, history = histories[idx]
+            y = self.model(X, history)
+
+            fx = y[-1]
+            self.model.zero_grad()
+            fx.backward(retain_graph=True)
+            g = torch.cat([p.grad.flatten().detach() for key, p in self.model.named_parameters() if "linear" in key])
+            print(g.min(), g.max())
+            self.U += g * g
+
     def get_mean(self, X):
         """
         Predicts mean at the given points
@@ -1395,6 +1472,12 @@ class TS_sampler():
         location *action*.
         """
         return self.regressor.predict_batch(batch_action, batch_reward, *args, **kwargs)
+
+    def add_gradient_batch(self, batch_action, batch_reward, *args, **kwargs):
+        """Update the regression model using the observations *reward* acquired at
+        location *action*.
+        """
+        return self.regressor.add_gradient_batch(batch_action, batch_reward, *args, **kwargs)
 
     def update_params(self, **kwargs):
         """

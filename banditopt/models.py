@@ -38,6 +38,10 @@ class LinearModel(nn.Module):
     def __init__(self, in_features, hidden_dim=32):
         super(LinearModel, self).__init__()
 
+        # Defines necessary variable
+        self.is_sampling = False
+        self.sampling_cache = None
+
         # Feature extractor
         self.feature_extractor = nn.Sequential(*[
             nn.Linear(in_features, hidden_dim),
@@ -148,9 +152,6 @@ class ImageContextLinearModel(ContextLinearModel):
         # Linear layer
         self.pre = nn.Linear(hidden_dim * 2, hidden_dim * 2)
         self.linear = nn.Linear(hidden_dim * 2, 1, bias=False)
-
-        self.is_sampling = False
-        self.sampling_cache = None
 
     def forward(self, X, history):
         if self.training:
