@@ -24,7 +24,7 @@ from sklearn.metrics import mean_squared_error
 from . import decorr_res
 from . import utils
 from . import user
-
+from . import fsc
 
 class Objective(ABC):
     """Abstract class to implement an objective to optimize. When inheriting this class,

@@ -325,6 +325,8 @@ class LinearBanditDiag:
 
         self.update_gradient = kwargs.get("update_gradient", True)
 
+        self.idx = kwargs.get("idx")
+
         self.__cache = {}
 
         self.reset()
@@ -511,6 +513,171 @@ class LinearBanditDiag:
         sampled = numpy.array(sampled)[:, numpy.newaxis]
         return self.scaler.inverse_transform(sampled)
 
+    def train_batch(self, X, y, weights=None, *args, **kwargs):
+        """
+        Trains the model using a batch
+
+        :param X: A `numpy.ndarray` of points with shape (N, features)
+        :param y: A `numpy.ndarray` of observed rewards
+        """
+        self.model.train()
+
+        self.clear_cache()
+
+        if self.update_exploration:
+            self.nu = max(self.default_nu * 1 / numpy.sqrt(len(X)), 1e-4)
+            self._lambda = max(self.default_lambda * 1 / numpy.sqrt(len(X)), 1e-4)
+
+        if self.param_space_bounds is not None:
+            X = rescale_X(X, self.param_space_bounds)
+        if y.ndim == 1:
+            y = y[:, numpy.newaxis]
+        y = self.scaler.fit_transform(y)
+        y = y[:, [self.idx]]
+
+        if isinstance(weights, type(None)):
+            weights = numpy.ones_like(y)
+        assert len(weights) == len(y), "Weights and y should have the same length"
+
+        # if self.update_gradient:
+        #     self.add_gradient(X)
+
+        # Convert X, y to torch
+        X = X.unsqueeze(1)
+        y = y.to(torch.float32)
+        weights = torch.tensor(weights, dtype=torch.float32)
+        if torch.cuda.is_available():
+            X = to_cuda(X)
+            y = to_cuda(y)
+            weights = to_cuda(weights)
+
+        criterion = kwargs.get("criterion", nn.MSELoss())
+        optimizer = kwargs.get("optimizer", optim.SGD(self.model.parameters(), lr=self.learning_rate))
+
+        length = len(X)
+        index = numpy.arange(length)
+
+        numpy.random.shuffle(index)
+        batch_loss = 0
+        for idx in index:
+            optimizer.zero_grad()
+            pred = self.model(X[idx])
+            loss = criterion(pred, y[[idx]])
+            loss.backward()
+            optimizer.step()
+
+            batch_loss += loss.item()
+
+        return batch_loss
+
+    def predict_batch(self, X, y, weights=None, *args, **kwargs):
+        """
+        Trains the model using a batch
+
+        :param X: A `numpy.ndarray` of points with shape (N, features)
+        :param y: A `numpy.ndarray` of observed rewards
+        """
+        self.model.eval()
+
+        self.clear_cache()
+
+        if self.update_exploration:
+            self.nu = max(self.default_nu * 1 / numpy.sqrt(len(X)), 1e-4)
+            self._lambda = max(self.default_lambda * 1 / numpy.sqrt(len(X)), 1e-4)
+
+        if self.param_space_bounds is not None:
+            X = rescale_X(X, self.param_space_bounds)
+        if y.ndim == 1:
+            y = y[:, numpy.newaxis]
+        y = self.scaler.fit_transform(y)
+        y = y[:, [self.idx]]
+
+        if isinstance(weights, type(None)):
+            weights = numpy.ones_like(y)
+        assert len(weights) == len(y), "Weights and y should have the same length"
+
+        # if self.update_gradient:
+        #     self.add_gradient(X)
+
+        # Convert X, y to torch
+        X = X.unsqueeze(1)
+        y = y.to(torch.float32)
+        weights = torch.tensor(weights, dtype=torch.float32)
+        if torch.cuda.is_available():
+            X = to_cuda(X)
+            y = to_cuda(y)
+            weights = to_cuda(weights)
+
+        criterion = kwargs.get("criterion", nn.MSELoss())
+
+        length = len(X)
+        index = numpy.arange(length)
+
+        numpy.random.shuffle(index)
+        batch_loss = 0
+        for idx in index:
+            pred = self.model(X[idx])
+            loss = criterion(pred, y[[idx]])
+            batch_loss += loss.item()
+
+        return batch_loss
+
+    def add_gradient_batch(self, X, y, weights=None, *args, **kwargs):
+        """
+        Trains the model using a batch
+
+        :param X: A `numpy.ndarray` of points with shape (N, features)
+        :param y: A `numpy.ndarray` of observed rewards
+        """
+        self.model.eval()
+
+        self.clear_cache()
+
+        if self.update_exploration:
+            self.nu = max(self.default_nu * 1 / numpy.sqrt(len(X)), 1e-4)
+            self._lambda = max(self.default_lambda * 1 / numpy.sqrt(len(X)), 1e-4)
+
+        if self.param_space_bounds is not None:
+            X = rescale_X(X, self.param_space_bounds)
+        if y.ndim == 1:
+            y = y[:, numpy.newaxis]
+        y = self.scaler.fit_transform(y)
+        y = y[:, [self.idx]]
+
+        if isinstance(weights, type(None)):
+            weights = numpy.ones_like(y)
+        assert len(weights) == len(y), "Weights and y should have the same length"
+
+        # if self.update_gradient:
+        #     self.add_gradient(X)
+
+        # Convert X, y to torch
+        X = X.unsqueeze(1)
+        y = y.to(torch.float32)
+        weights = torch.tensor(weights, dtype=torch.float32)
+        if torch.cuda.is_available():
+            X = to_cuda(X)
+            y = to_cuda(y)
+            weights = to_cuda(weights)
+
+        criterion = kwargs.get("criterion", nn.MSELoss())
+
+        length = len(X)
+        index = numpy.arange(length)
+
+        numpy.random.shuffle(index)
+        batch_loss = 0
+        for idx in index:
+            y = self.model(X[idx])
+
+            fx = y[-1]
+            self.model.zero_grad()
+            fx.backward(retain_graph=True)
+            g = torch.cat([p.grad.flatten().detach() for key, p in self.model.named_parameters() if "linear" in key])
+            self.U += g * g
+
+        return batch_loss
+
     def cache(self, key, value):
         if not self._isin_cache(key):
             self.model.zero_grad()
@@ -635,7 +802,6 @@ class ContextualLinearBanditDiag(LinearBanditDiag):
         )
 
         self.histories = []
-        self.idx = kwargs.get("idx")
 
     def reset(self):
         self.histories = []
@@ -1022,7 +1188,6 @@ class ContextualLinearBanditDiag(LinearBanditDiag):
             self.model.zero_grad()
             fx.backward(retain_graph=True)
             g = torch.cat([p.grad.flatten().detach() for key, p in self.model.named_parameters() if "linear" in key])
-            print(g.min(), g.max())
             self.U += g * g
 
     def get_mean(self, X):
