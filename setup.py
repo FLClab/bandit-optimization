@@ -8,7 +8,7 @@ setup(
 	install_requires=[
 		"pyyaml",
 		"statsmodels",
-		"deap",
+		"deap>=1.3",
 		"scikit-learn",
 		"numpy",
 		"torch"
