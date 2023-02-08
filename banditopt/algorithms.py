@@ -8,6 +8,7 @@ import numpy
 import torch
 import os
 import time
+import pickle
 
 from sklearn.gaussian_process import GaussianProcessRegressor
 from sklearn.gaussian_process.kernels import RBF, WhiteKernel
@@ -199,6 +200,36 @@ class sklearn_GP(GaussianProcessRegressor):
         f_tilde = rng.multivariate_normal(mean.flatten(), cov, method='eigh')[:,numpy.newaxis]
         f_tilde = self.scaler.inverse_transform(f_tilde)
         return f_tilde
+
+    def save_ckpt(self, path, prefix="", trial=""):
+        """
+        Saves a checkpoint of the model
+
+        :param path: A `str` of the model path
+        :param prefix: A `str` of the model name
+        """
+        path = os.path.join(path, "models")
+        if trial:
+            path = os.path.join(path, trial)
+
+        os.makedirs(path, exist_ok=True)
+        savename = f"{prefix}_model.ckpt" if prefix else "model.ckpt"
+        pickle.dump(self, open(os.path.join(path, savename), "wb"))
+
+    def load_ckpt(self, path, prefix="", trial=""):
+        """
+        Loads a checkpoint of the model
+
+        :param path: A `str` of the model path
+        :param prefix: A `str` of the model name
+        """
+        path = os.path.join(path, "models")
+        if trial:
+            path = os.path.join(path, trial)
+
+        savename = f"{prefix}_model.ckpt" if prefix else "model.ckpt"
+        params = pickle.load(open(os.path.join(path, savename), "rb"))
+        self.update_params(**vars(params))
 
     def set_sampling_mode(self, is_sampling):
         pass
