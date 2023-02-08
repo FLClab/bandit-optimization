@@ -234,7 +234,7 @@ def img2float(img):
         raise TypeError
 
 
-def pareto_front(points):
+def pareto_front(points, weights=None):
     """
     this function returns indexes of the pareto front of a minimization problem
     parameters:
@@ -244,7 +244,9 @@ def pareto_front(points):
         del creator.FitnessMult
     if "Individual" in dir(creator):
         del creator.Individual
-    creator.create("FitnessMult", base.Fitness, weights=tuple([-1.]*points.shape[1]))
+    if isinstance(weights, (type(None))):
+        weights = tuple([-1.]*points.shape[1])
+    creator.create("FitnessMult", base.Fitness, weights=weights)
     creator.create("Individual", list, fitness=creator.FitnessMult)
     points_list = points.tolist()
     for i in range(len(points_list)):
