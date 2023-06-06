@@ -112,7 +112,7 @@ def getDCorr(im, r, Ng=10):
     k0 = r[ind0]
 
     if r0[ind0] == 0.:
-        gmax = max(im.shape)/2
+        gMax = max(im.shape)/2
     else:
         gMax = 2 / r0[ind0]
 
@@ -120,9 +120,9 @@ def getDCorr(im, r, Ng=10):
     g = [im.shape[0] / 4, *numpy.exp(numpy.linspace(numpy.log(gMax), numpy.log(0.15), Ng))]
     d = numpy.zeros((Nr, 2 * Ng + 1))
 
-    kc = numpy.zeros(len(g) + Ng * 2 + 1)
+    kc = numpy.zeros(len(g) + Ng + 1)
     kc[0] = k0
-    SNR = numpy.zeros(len(g) + Ng * 2 + 1)
+    SNR = numpy.zeros(len(g) + Ng + 1)
     SNR[0] = snr0
 
     ind0 = 1
@@ -145,10 +145,11 @@ def getDCorr(im, r, Ng=10):
 
             kc[h + Ng * refin + 1] = r[ind]
             SNR[h + Ng * refin + 1] = snr
-
+        
         if refin == 0:
+            # In original matlab code, kc is built on the fly hence min(indmax, len(g)) is not required
             indmax = numpy.argwhere(kc == max(kc)).ravel()
-            ind1 = indmax.max()
+            ind1 = min(indmax[-1], len(g))
 
             if ind1 == 0: # Peaks only without highpass
                 ind1 = 0
@@ -167,8 +168,8 @@ def getDCorr(im, r, Ng=10):
                 g2 = g[ind2]
             g = numpy.exp(numpy.linspace(numpy.log(g1), numpy.log(g2), Ng))
 
-            r1 = kc[indmax.max()] - (r[1] - r[0])
-            r2 = kc[indmax.max()] + 0.4
+            r1 = kc[indmax[-1]] - (r[1] - r[0])
+            r2 = kc[indmax[-1]] + 0.4
 
             if r1 < 0:
                 r1 = 0
@@ -198,6 +199,8 @@ def getDCorr(im, r, Ng=10):
 def calculate(image, N=20, Nr=50, Ng=10):
     pps=5
     r = numpy.linspace(0, 1, Nr)
+
+    image = numpy.zeros_like(image, dtype=numpy.uint16)
 
     image = apodImRect(image, N)
     KcMax, A0 = getDCorr(image, r, Ng)
