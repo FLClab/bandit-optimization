@@ -145,7 +145,7 @@ def getDCorr(im, r, Ng=10):
 
             kc[h + Ng * refin + 1] = r[ind]
             SNR[h + Ng * refin + 1] = snr
-        
+
         if refin == 0:
             # In original matlab code, kc is built on the fly hence min(indmax, len(g)) is not required
             indmax = numpy.argwhere(kc == max(kc)).ravel()
@@ -199,8 +199,6 @@ def getDCorr(im, r, Ng=10):
 def calculate(image, N=20, Nr=50, Ng=10):
     pps=5
     r = numpy.linspace(0, 1, Nr)
-
-    image = numpy.zeros_like(image, dtype=numpy.uint16)
 
     image = apodImRect(image, N)
     KcMax, A0 = getDCorr(image, r, Ng)
