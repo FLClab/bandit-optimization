@@ -257,6 +257,8 @@ class Resolution(Objective):
     def __init__(self, pixelsize, res_cap=350):
         self.label = "Resolution (nm)"
         self.select_optimal = numpy.argmin
+        if isinstance(pixelsize, (tuple, list)):
+            pixelsize = pixelsize[0]
         self.pixelsize = pixelsize
 #            self.kwargs = kwargs
         self.res_cap=res_cap
