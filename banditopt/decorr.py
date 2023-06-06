@@ -82,7 +82,7 @@ def getDCorr(im, r, Ng=10):
     im = im.astype(numpy.float32)
 
     im = im[:im.shape[0]-1+im.shape[0]%2,:im.shape[1]-1+im.shape[1]%2]
-    X, Y = np.meshgrid(*(np.linspace(-1, 1, l) for l in im.shape[::-1]))
+    X, Y = numpy.meshgrid(*(numpy.linspace(-1, 1, l) for l in im.shape[::-1]))
     R = numpy.sqrt(X ** 2 + Y ** 2)
 
     Nr = len(r)
@@ -195,14 +195,14 @@ def getDCorr(im, r, Ng=10):
 
     return kcMax, A0
 
-def calculate(im, N=20, Nr=50, Ng=10):
+def calculate(image, N=20, Nr=50, Ng=10):
     pps=5
     r = numpy.linspace(0, 1, Nr)
 
-    im = apodImRect(im, N)
-    KcMax, A0 = getDCorr(im, r, Ng)
+    image = apodImRect(image, N)
+    KcMax, A0 = getDCorr(image, r, Ng)
 
-    return 2 / KcMax, A0
+    return 2 / KcMax
 
 if __name__ == "__main__":
 
