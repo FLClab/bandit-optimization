@@ -470,12 +470,11 @@ class Squirrel(Objective):
         super_resolution, reference = args
         confocal_fg = kwargs.get("confocal_fg", numpy.ones_like(super_resolution, dtype=bool))
         convolved = self.convolve(super_resolution, alpha, beta, sigma)
-        if self.normalize:
-            reference = (reference - reference.min()) / (reference.max() - reference.min() + 1e-9)
-            convolved = (convolved - convolved.min()) / (convolved.max() - convolved.min() + 1e-9)
-#         error = numpy.mean(numpy.abs(reference[confocal_fg] - convolved[confocal_fg]))
-#         error = numpy.std(numpy.abs(reference[confocal_fg] - convolved[confocal_fg]))
-        _, S = structural_similarity(reference, convolved, full=True)
+
+        reference = (reference - reference.min()) / (reference.max() - reference.min() + 1e-9)
+        convolved = (convolved - convolved.min()) / (convolved.max() - convolved.min() + 1e-9)
+
+        _, S = structural_similarity(reference, convolved, full=True, data_range=1.0)
         error = numpy.mean(S[confocal_fg])
         return error
 
