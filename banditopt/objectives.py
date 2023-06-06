@@ -21,7 +21,7 @@ from sklearn.metrics import mean_squared_error
 # import src.utils as utils
 # import src.user as user
 
-from . import decorr_res
+from . import decorr
 from . import utils
 from . import user
 from . import fsc
@@ -266,7 +266,7 @@ class Resolution(Objective):
     def evaluate(self, sted_stack, confocal_init, confocal_end, sted_fg, confocal_fg, *args, **kwargs):
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
-            res = decorr_res.decorr_res(image=sted_stack[0])*self.pixelsize/1e-9
+            res = decorr.calculate(image=sted_stack[0])*self.pixelsize/1e-9
         if res > self.res_cap:
             res = self.res_cap
         return res
@@ -472,12 +472,11 @@ class Squirrel(Objective):
         super_resolution, reference = args
         confocal_fg = kwargs.get("confocal_fg", numpy.ones_like(super_resolution, dtype=bool))
         convolved = self.convolve(super_resolution, alpha, beta, sigma)
-        if self.normalize:
-            reference = (reference - reference.min()) / (reference.max() - reference.min() + 1e-9)
-            convolved = (convolved - convolved.min()) / (convolved.max() - convolved.min() + 1e-9)
-#         error = numpy.mean(numpy.abs(reference[confocal_fg] - convolved[confocal_fg]))
-#         error = numpy.std(numpy.abs(reference[confocal_fg] - convolved[confocal_fg]))
-        _, S = structural_similarity(reference, convolved, full=True)
+
+        reference = (reference - reference.min()) / (reference.max() - reference.min() + 1e-9)
+        convolved = (convolved - convolved.min()) / (convolved.max() - convolved.min() + 1e-9)
+
+        _, S = structural_similarity(reference, convolved, full=True, data_range=1.0)
         error = numpy.mean(S[confocal_fg])
         return error
 
