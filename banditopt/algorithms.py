@@ -194,6 +194,7 @@ class sklearn_GP(GaussianProcessRegressor):
             X = rescale_X(X, self.param_space_bounds)
 
         mean, k = self.predict(X, return_cov=True)
+        min_eig = np.min(np.real(np.linalg.eigvals(k)))
         cov = self.s_ub ** 2 / self.lambda_ * k
         # Rescales sampled mean
         rng = numpy.random.default_rng(seed)

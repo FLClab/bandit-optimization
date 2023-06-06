@@ -21,7 +21,7 @@ from sklearn.metrics import mean_squared_error
 # import src.utils as utils
 # import src.user as user
 
-from . import decorr_res
+from . import decorr
 from . import utils
 from . import user
 from . import fsc
@@ -264,7 +264,7 @@ class Resolution(Objective):
     def evaluate(self, sted_stack, confocal_init, confocal_end, sted_fg, confocal_fg, *args, **kwargs):
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
-            res = decorr_res.decorr_res(image=sted_stack[0])*self.pixelsize/1e-9
+            res = decorr.calculate(image=sted_stack[0])*self.pixelsize/1e-9
         if res > self.res_cap:
             res = self.res_cap
         return res
