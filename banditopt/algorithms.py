@@ -166,6 +166,7 @@ class sklearn_GP(GaussianProcessRegressor):
 
         self.param_space_bounds = param_space_bounds
         self.scaler = StandardScaler(with_mean=True, with_std=True)
+        self.idx = kwargs.get("idx", None)
 
     def update(self, X, y, *args, **kwargs):
         if self.param_space_bounds is not None:
@@ -194,11 +195,20 @@ class sklearn_GP(GaussianProcessRegressor):
             X = rescale_X(X, self.param_space_bounds)
 
         mean, k = self.predict(X, return_cov=True)
+<<<<<<< HEAD
         min_eig = np.min(np.real(np.linalg.eigvals(k)))
+=======
+        # Ensures covariance matrix is positivie-semidefinite
+        min_eig = numpy.min(numpy.real(numpy.linalg.eigvals(k)))
+        if min_eig < 0:
+            k -= 10 * min_eig * numpy.eye(*k.shape)
+
+>>>>>>> 93d775278ab7d86c829d60570e7ababd49757f95
         cov = self.s_ub ** 2 / self.lambda_ * k
+
         # Rescales sampled mean
         rng = numpy.random.default_rng(seed)
-        f_tilde = rng.multivariate_normal(mean.flatten(), cov, method='eigh')[:,numpy.newaxis]
+        f_tilde = rng.multivariate_normal(mean.flatten(), cov, method='eigh', check_valid="ignore")[:,numpy.newaxis]
         f_tilde = self.scaler.inverse_transform(f_tilde)
         return f_tilde
 
