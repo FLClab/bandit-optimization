@@ -17,6 +17,9 @@ from skimage.feature import peak_local_max
 from skimage.metrics import structural_similarity
 from sklearn.metrics import mean_squared_error
 
+import scipy.fft
+from scipy.optimize import curve_fit
+
 #import fsc
 # import src.utils as utils
 # import src.user as user
@@ -602,3 +605,56 @@ class Squirrel(Objective):
 #         Convolves an image with the given parameters
 #         """
 #         return gaussian_filter(img * alpha + beta, sigma=sigma)
+
+def exp_func(x, a, b):
+    return a*numpy.exp(-b*x)
+
+class FFTMetric:
+    """
+    This is an example of how the metric should be implemented
+    """
+    def __init__(self, label="FFT"):
+        """
+        Implements the `FFTMetric` objective
+        """
+        self.label = label
+
+    def evaluate(self, sted_stack, confocal_init, confocal_end, sted_fg, confocal_fg, *args, **kwargs):
+        """
+        Evaluates the objective
+
+        :param sted_stack: A list of STED images.
+        :param confocal_init: A confocal image acquired before the STED stack. #conf1
+        :param concofal_end: A confocal image acquired after the STED stack. #conf2
+        :param sted_fg: A background mask of the first STED image in the stack
+                        (2d array of bool: True on foreground, False on background).
+        :param confocal_fg: A background mask of the initial confocal image
+                            (2d array of bool: True on foreground, False on background).        
+        """  
+    
+        #Test radial profil and exp fit
+        FFT_sted = scipy.fft.fftshift(scipy.fft.fft2(sted_stack))
+        h, w = FFT_sted.shape #image dimensions
+        val_sted = []
+        yc, xc = int((h+1)/2) + 1, int((w+1)/2) + 1 #center position of x and y 
+        rmax = min([w-xc, h-yc]) #cercle diameter
+
+        for r in range(rmax): #cercles, r from 0 to rmax-1
+            x, y = numpy.ogrid[0:FFT_sted.shape[0], 0:FFT_sted.shape[1]] #matrix with the same size as the original image
+            circle_maskA = numpy.sqrt((x-xc)**2 + (y-yc)**2) >= r-0.5 #creates difference circle mask centered and with radius r-0.5
+            circle_maskB = numpy.sqrt((x - xc)**2 + (y - yc)**2) < r + 0.5 #creates circle mask centered and with radius r+0.5
+            mask = circle_maskA * circle_maskB #creates ring masks
+            abs_val = numpy.sum(numpy.abs(FFT_sted[mask]**2)) #mask application on the FFT image
+            val_sted.append(abs_val)
+        
+        if val_sted[1] == 0: #zero images exception
+            metric3 = 1
+        else:
+            val_sted_new = val_sted[1:]/max(val_sted[1:])
+            x = numpy.linspace(0, len(val_sted_new)-1, len(val_sted_new))
+            popt, pcov = scipy.optimize.curve_fit(exp_func, x, val_sted_new, bounds = (0, [1, 10]))
+            opt_func = exp_func(x, *popt) #exp fit to data
+            delta = (numpy.asarray(val_sted_new)-numpy.asarray(opt_func))**2
+            metric3 = (numpy.sqrt(sum(delta)/len(val_sted_new)))*5 # x5 to be changed or justified
+
+        return min([1, metric3])
