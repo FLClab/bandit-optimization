@@ -116,7 +116,7 @@ class MO_function_sample():
         ys = numpy.array([self.algos[i].sample(X, seed=self.seeds[i], history=self.history) for i in range(len(self.algos))]).squeeze(axis=-1)
         # ys = numpy.array([self.algos[i].predict(X)[0] for i in range(len(self.algos))]).squeeze(axis=-1)
         if self.time_limit is not None:
-            pixeltimes = X[:, self.param_names.index("dwelltime")] * X[:, self.param_names.index("line_step")] * X[:, self.param_names.index("pixelsize")]**2/(20e-9)**2
+            pixeltimes = X[:, self.param_names.index("pdt")] * X[:, self.param_names.index("line_step")] * X[:, self.param_names.index("pixelsize")]**2/(20e-9)**2
             for i, bounds in enumerate(self.borders):
                 if weights[i] < 0:
                     ys[i, :][pixeltimes > self.time_limit] = bounds[1] + (bounds[1]-bounds[0])*1.5
@@ -124,10 +124,10 @@ class MO_function_sample():
                     ys[i, :][pixeltimes > self.time_limit] = bounds[0] - (bounds[1]-bounds[0])*1.5
 
         if self.with_time:
-            dwelltime_pos = list(X.flatten()).index('dwelltime')
-            return tuple(ys + X[dwelltime_pos])
-        else:
-            return list(map(tuple, ys.T))
+            ys = numpy.concatenate((ys, X[:, self.param_names.index("pdt")][numpy.newaxis]), axis=0)
+            # return tuple(ys + X[:, self.param_names.index("pdt")])
+
+        return list(map(tuple, ys.T))
 
 def rescale_X(X, param_space_bounds):
     param_space_bounds = numpy.array(param_space_bounds).T
@@ -811,6 +811,9 @@ class LinearBanditDiag:
             path = os.path.join(path, trial)
 
         savename = f"{prefix}_model.ckpt" if prefix else "model.ckpt"
+        if not os.path.isfile(os.path.join(path, savename)):
+            print("[!!!!] Model {} does not exist...".format(os.path.join(path, savename)))
+            return
         params = torch.load(os.path.join(path, savename), map_location="cpu")
         self.update_params(**vars(params))
 

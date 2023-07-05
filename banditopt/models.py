@@ -1,5 +1,6 @@
 
 import torch
+import os
 
 from torch import nn
 from collections import OrderedDict
@@ -83,6 +84,10 @@ class LinearModel(nn.Module):
                 return setattr(obj, names[0], val)
             else:
                 return sattr(getattr(obj, names[0]), names[1:], val)
+
+        if not os.path.isfile(path):
+            print("[!!!!] Model {} does not exist...".format(path))
+            return
 
         model = torch.load(path, map_location=lambda storage, loc: storage)
         if not isinstance(model, (OrderedDict, dict)):

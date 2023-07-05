@@ -609,7 +609,7 @@ class Squirrel(Objective):
 def exp_func(x, a, b):
     return a*numpy.exp(-b*x)
 
-class FFTMetric:
+class FFTMetric(Objective):
     """
     This is an example of how the metric should be implemented
     """
@@ -618,6 +618,7 @@ class FFTMetric:
         Implements the `FFTMetric` objective
         """
         self.label = label
+        self.select_optimal = numpy.argmin
 
     def evaluate(self, sted_stack, confocal_init, confocal_end, sted_fg, confocal_fg, *args, **kwargs):
         """
@@ -631,7 +632,9 @@ class FFTMetric:
         :param confocal_fg: A background mask of the initial confocal image
                             (2d array of bool: True on foreground, False on background).        
         """  
-    
+
+        sted_stack = sted_stack[0]
+
         #Test radial profil and exp fit
         FFT_sted = scipy.fft.fftshift(scipy.fft.fft2(sted_stack))
         h, w = FFT_sted.shape #image dimensions
@@ -648,13 +651,41 @@ class FFTMetric:
             val_sted.append(abs_val)
         
         if val_sted[1] == 0: #zero images exception
-            metric3 = 1
+            metric = 1
         else:
             val_sted_new = val_sted[1:]/max(val_sted[1:])
             x = numpy.linspace(0, len(val_sted_new)-1, len(val_sted_new))
             popt, pcov = scipy.optimize.curve_fit(exp_func, x, val_sted_new, bounds = (0, [1, 10]))
             opt_func = exp_func(x, *popt) #exp fit to data
             delta = (numpy.asarray(val_sted_new)-numpy.asarray(opt_func))**2
-            metric3 = (numpy.sqrt(sum(delta)/len(val_sted_new)))*5 # x5 to be changed or justified
+            metric = (numpy.sqrt(sum(delta)/len(val_sted_new)))*5 # x5 to be changed or justified
 
-        return min([1, metric3])
+        return min([1, metric])
+
+class Crosstalk(Objective):
+    def __init__(self, label="Crosstalk"):
+        self.label = label
+        self.select_optimal = numpy.argmin
+
+    def evaluate(self, sted_stack, confocal_init, confocal_end, sted_fg, confocal_fg, *args, **kwargs):
+        """
+        Evaluates the objective
+
+        :param sted_stack: A list of STED images.
+        :param confocal_init: A confocal image acquired before the STED stack. #conf1
+        :param concofal_end: A confocal image acquired after the STED stack. #conf2
+        :param sted_fg: A background mask of the first STED image in the stack
+                        (2d array of bool: True on foreground, False on background).
+        :param confocal_fg: A background mask of the initial confocal image
+                            (2d array of bool: True on foreground, False on background).
+        """
+        sted_stack = sted_stack[0]
+        other_sted = kwargs.get("other_sted_image", numpy.zeros_like(sted_stack))
+
+        sted_stack = (sted_stack - sted_stack.min()) / (sted_stack.max() - sted_stack.min() + 1e-9)
+        other_sted = (other_sted - other_sted.min()) / (other_sted.max() - other_sted.min() + 1e-9)
+
+        _, S = structural_similarity(sted_stack, other_sted, full=True, data_range=1.0)
+        error = numpy.mean(S[~confocal_fg])
+        print("Crosstalk", error)
+        return error

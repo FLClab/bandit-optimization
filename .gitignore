@@ -1,4 +1,5 @@
 # Removes the cached files
+.idea/
 *cache.pkl
 panels/
 debug*/
