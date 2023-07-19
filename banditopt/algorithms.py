@@ -1375,6 +1375,23 @@ class ContextualLinearBanditDiag(LinearBanditDiag):
         sampled = numpy.array(sampled)[:, numpy.newaxis]
         return self.scaler.inverse_transform(sampled)
 
+class ContextualNeuralTS(ContextualLinearBanditDiag):
+    def __init__(self, *args, **kwargs):
+        super(ContextualNeuralTS, self).__init__(*args, **kwargs)
+
+    def get_gradient(self):
+        g = torch.cat([p.grad.flatten().detach() for key, p in self.model.named_parameters()])
+        return g
+
+    def reset(self):
+        self.histories = []
+        self.model = ContextLinearModel(self.n_features + self.ctx_features, self.n_hidden_dim, every_step_decision=self.every_step_decision)
+        self.total_param = sum(p.numel() for key, p in self.model.named_parameters() if (p.requires_grad))
+        self.U = self._lambda * torch.ones((self.total_param,))
+        if torch.cuda.is_available():
+            self.model = self.model.cuda()
+            self.U = self.U.cuda()    
+
 class ContextualImageLinearBanditDiag(ContextualLinearBanditDiag):
     def __init__(self, *args, **kwargs):
 
@@ -1403,6 +1420,36 @@ class ContextualImageLinearBanditDiag(ContextualLinearBanditDiag):
         if torch.cuda.is_available():
             self.model = self.model.cuda()
             self.U = self.U.cuda()
+
+class ContextualImageNeuralTS(ContextualNeuralTS):
+    def __init__(self, *args, **kwargs):
+
+        self.datamap_opts = kwargs.get("datamap_opts", {"shape": 64})
+        self.pretrained_opts = kwargs.get("pretrained_opts", {"use" : False})
+        self.teacher_opts = kwargs.get("teacher_opts", {"use" : False})
+
+        super(ContextualNeuralTS, self).__init__(*args, **kwargs)
+
+    def reset(self):
+        self.histories = []
+        self.model = ImageContextLinearModel(
+            self.n_features, self.datamap_opts["shape"], self.n_hidden_dim,
+            every_step_decision=self.every_step_decision, pretrained_opts=self.pretrained_opts
+        )
+        if self.teacher_opts["use"]:
+            self.teacher_model = ImageContextLinearModel(
+                self.n_features, self.datamap_opts["shape"], self.n_hidden_dim,
+                every_step_decision=self.every_step_decision, pretrained_opts=self.pretrained_opts
+            )
+            if torch.cuda.is_available():
+                self.teacher_model = self.teacher_model.cuda()
+
+        self.total_param = sum(p.numel() for key, p in self.model.named_parameters() if (p.requires_grad))
+        self.U = self._lambda * torch.ones((self.total_param,))
+        if torch.cuda.is_available():
+            self.model = self.model.cuda()
+            self.U = self.U.cuda()
+
 
 class LSTMLinearBanditDiag(LinearBanditDiag):
     """
