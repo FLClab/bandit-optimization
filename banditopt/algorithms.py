@@ -369,6 +369,10 @@ class LinearBanditDiag:
 
         self.reset()
 
+    def get_gradient(self):
+        g = torch.cat([p.grad.flatten().detach() for key, p in self.model.named_parameters() if "linear" in key])
+        return g
+
     def reset(self):
         self.model = LinearModel(self.n_features, self.n_hidden_dim)
         self.total_param = sum(p.numel() for key, p in self.model.named_parameters() if (p.requires_grad) and ("linear" in key))
@@ -450,7 +454,7 @@ class LinearBanditDiag:
         fx = y[-1]
         self.model.zero_grad()
         fx.backward(retain_graph=True)
-        g = torch.cat([p.grad.flatten().detach() for key, p in self.model.named_parameters() if "linear" in key])
+        g = self.get_gradient()
         self.U += g * g
 
     def get_mean(self, X):
@@ -493,7 +497,7 @@ class LinearBanditDiag:
         for fx in y:
             self.model.zero_grad()
             fx.backward(retain_graph=True)
-            g = torch.cat([p.grad.flatten().detach() for key, p in self.model.named_parameters() if "linear" in key])
+            g = self.get_gradient()
             # sigma2 = self._lambda * self.nu * g * g / self.U
             sigma2 = self._lambda * self.nu * g * g / self.U
             sigma = torch.sqrt(torch.sum(sigma2))
@@ -711,7 +715,7 @@ class LinearBanditDiag:
             fx = y[-1]
             self.model.zero_grad()
             fx.backward(retain_graph=True)
-            g = torch.cat([p.grad.flatten().detach() for key, p in self.model.named_parameters() if "linear" in key])
+            g = self.get_gradient()
             self.U += g * g
 
         return batch_loss
@@ -720,7 +724,7 @@ class LinearBanditDiag:
         if not self._isin_cache(key):
             self.model.zero_grad()
             value.backward(retain_graph=True)
-            g = torch.cat([p.grad.flatten().detach() for key, p in self.model.named_parameters() if "linear" in key])
+            g = self.get_gradient()
             self.__cache[self._convert_to_key(key)] = g
         return self.__cache[self._convert_to_key(key)]
 
@@ -818,6 +822,24 @@ class LinearBanditDiag:
         self.update_params(**vars(params))
 
         # self.model.load_state_dict(params.model.state_dict())
+
+class NeuralTS(LinearBanditDiag):
+    def __init__(self, *args, **kwargs):
+        super(NeuralTS, self).__init__(
+            *args, **kwargs
+        )
+        
+    def get_gradient(self):
+        g = torch.cat([p.grad.flatten().detach() for key, p in self.model.named_parameters()])
+        return g
+
+    def reset(self):
+        self.model = LinearModel(self.n_features, self.n_hidden_dim)
+        self.total_param = sum(p.numel() for key, p in self.model.named_parameters() if (p.requires_grad))
+        self.U = self._lambda * torch.ones((self.total_param,))
+        if torch.cuda.is_available():
+            self.model = self.model.cuda()
+            self.U = self.U.cuda()        
 
 class ContextualLinearBanditDiag(LinearBanditDiag):
     """
@@ -998,7 +1020,7 @@ class ContextualLinearBanditDiag(LinearBanditDiag):
         fx = y[-1]
         self.model.zero_grad()
         fx.backward(retain_graph=True)
-        g = torch.cat([p.grad.flatten().detach() for key, p in self.model.named_parameters() if "linear" in key])
+        g = self.get_gradient()
         self.U += g * g
 
     def train_batch(self, X, y, history, *args, **kwargs):
@@ -1228,7 +1250,7 @@ class ContextualLinearBanditDiag(LinearBanditDiag):
             fx = y[-1]
             self.model.zero_grad()
             fx.backward(retain_graph=True)
-            g = torch.cat([p.grad.flatten().detach() for key, p in self.model.named_parameters() if "linear" in key])
+            g = self.get_gradient()
             self.U += g * g
 
     def get_mean(self, X):
@@ -1285,7 +1307,7 @@ class ContextualLinearBanditDiag(LinearBanditDiag):
         for fx in y:
             self.model.zero_grad()
             fx.backward(retain_graph=True)
-            g = torch.cat([p.grad.flatten().detach() for key, p in self.model.named_parameters() if "linear" in key])
+            g = self.get_gradient()
             # sigma2 = self._lambda * self.nu * g * g / self.U
             sigma2 = self._lambda * self.nu * g * g / self.U
             sigma = torch.sqrt(torch.sum(sigma2))
@@ -1489,7 +1511,7 @@ class LSTMLinearBanditDiag(LinearBanditDiag):
         fx = y[-1]
         self.model.zero_grad()
         fx.backward(retain_graph=True)
-        g = torch.cat([p.grad.flatten().detach() for key, p in self.model.named_parameters() if "linear" in key])
+        g = self.get_gradient()
         self.U += g * g
 
     def get_mean(self, X):
@@ -1540,7 +1562,7 @@ class LSTMLinearBanditDiag(LinearBanditDiag):
         for fx in y:
             self.model.zero_grad()
             fx.backward(retain_graph=True)
-            g = torch.cat([p.grad.flatten().detach() for key, p in self.model.named_parameters() if "linear" in key])
+            g = self.get_gradient()
             # sigma2 = self._lambda * self.nu * g * g / self.U
             sigma2 = self._lambda * self.nu * g * g / self.U
             sigma = torch.sqrt(torch.sum(sigma2))

@@ -609,6 +609,38 @@ class Squirrel(Objective):
 def exp_func(x, a, b):
     return a*numpy.exp(-b*x)
 
+def apply_hamming_window(data):
+    """
+    Apply Hamming window to data
+    :param data (numpy.ndarray): An N-dimensional Numpy array to be used in Windowing
+    :return:
+    """
+    assert issubclass(data.__class__, numpy.ndarray)
+
+    return _nd_window(data, numpy.hamming)
+
+def _nd_window(data, filter_function, **kwargs):
+    """
+    Performs on N-dimensional spatial-domain data.
+    This is done to mitigate boundary effects in the FFT.
+    
+    :params data: ndarray
+           Input data to be windowed, modified in place.
+    :params filter_function: 1D window generation function
+           Function should accept one argument: the window length.
+           Example: scipy.signal.hamming
+    """
+    result = data.copy().astype(numpy.float64)
+    for axis, axis_size in enumerate(data.shape):
+        # set up shape for numpy broadcasting
+        filter_shape = [1, ] * data.ndim
+        filter_shape[axis] = axis_size
+        window = filter_function(axis_size, **kwargs).reshape(filter_shape)
+        # scale the window intensities to maintain array intensity
+        numpy.power(window, (1.0/data.ndim), out=window)
+        result *= window
+    return result
+
 class FFTMetric(Objective):
     """
     This is an example of how the metric should be implemented
@@ -634,6 +666,7 @@ class FFTMetric(Objective):
         """  
 
         sted_stack = sted_stack[0]
+        sted_stack = apply_hamming_window(sted_stack)
 
         #Test radial profil and exp fit
         FFT_sted = scipy.fft.fftshift(scipy.fft.fft2(sted_stack))
@@ -649,16 +682,21 @@ class FFTMetric(Objective):
             mask = circle_maskA * circle_maskB #creates ring masks
             abs_val = numpy.sum(numpy.abs(FFT_sted[mask]**2)) #mask application on the FFT image
             val_sted.append(abs_val)
-        
+
+        val_sted = numpy.array(val_sted)
+
         if val_sted[1] == 0: #zero images exception
             metric = 1
         else:
-            val_sted_new = val_sted[1:]/max(val_sted[1:])
+            max_index = 1
+            m, M = numpy.min(val_sted[max_index:]), numpy.max(val_sted[max_index:])
+            val_sted_new = (val_sted[max_index:] - m) / (M - m)
             x = numpy.linspace(0, len(val_sted_new)-1, len(val_sted_new))
-            popt, pcov = scipy.optimize.curve_fit(exp_func, x, val_sted_new, bounds = (0, [1, 10]))
+            popt, pcov = scipy.optimize.curve_fit(exp_func, x, val_sted_new, bounds = (0, [5, 10]))
             opt_func = exp_func(x, *popt) #exp fit to data
-            delta = (numpy.asarray(val_sted_new)-numpy.asarray(opt_func))**2
-            metric = (numpy.sqrt(sum(delta)/len(val_sted_new)))*5 # x5 to be changed or justified
+            delta = (val_sted_new - opt_func)**2
+#             metric = (numpy.sqrt(numpy.mean(delta)))*5 # x5 to be changed or justified
+            metric = numpy.sqrt(numpy.average(delta, weights=numpy.linspace(1, 5, len(delta)))) * 5
 
         return min([1, metric])
 
