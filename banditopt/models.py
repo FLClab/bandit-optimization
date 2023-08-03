@@ -129,12 +129,13 @@ class ContextLinearModel(LinearModel):
 class ImageContextLinearModel(ContextLinearModel):
     def __init__(
         self, in_features, image_shape, hidden_dim=32, pretrained_opts=None,
-        every_step_decision=False, *args, **kwargs
+        every_step_decision=False, full_gradient=False, *args, **kwargs
     ):
         super(ImageContextLinearModel, self).__init__(in_features=in_features)
 
         self.in_features = in_features
         self.image_shape = image_shape
+        self.full_gradient = full_gradient
         if isinstance(image_shape, (tuple, list)):
             self.image_shape = image_shape[0]
         assert self.image_shape % 16 == 0, "Image shape should be a multiple of 16."
@@ -159,7 +160,7 @@ class ImageContextLinearModel(ContextLinearModel):
         self.linear = nn.Linear(hidden_dim * 2, 1, bias=False)
 
     def forward(self, X, history):
-        if self.training:
+        if self.training or self.full_gradient:
             X = self.extract_features(X, history)
         else:
             with torch.no_grad():

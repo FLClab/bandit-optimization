@@ -830,7 +830,7 @@ class NeuralTS(LinearBanditDiag):
         )
         
     def get_gradient(self):
-        g = torch.cat([p.grad.flatten().detach() for key, p in self.model.named_parameters()])
+        g = torch.cat([p.grad.flatten().detach() for key, p in self.model.named_parameters() if (p.requires_grad)])
         return g
 
     def reset(self):
@@ -1380,7 +1380,7 @@ class ContextualNeuralTS(ContextualLinearBanditDiag):
         super(ContextualNeuralTS, self).__init__(*args, **kwargs)
 
     def get_gradient(self):
-        g = torch.cat([p.grad.flatten().detach() for key, p in self.model.named_parameters()])
+        g = torch.cat([p.grad.flatten().detach() for key, p in self.model.named_parameters() if (p.requires_grad)])
         return g
 
     def reset(self):
@@ -1428,18 +1428,21 @@ class ContextualImageNeuralTS(ContextualNeuralTS):
         self.pretrained_opts = kwargs.get("pretrained_opts", {"use" : False})
         self.teacher_opts = kwargs.get("teacher_opts", {"use" : False})
 
-        super(ContextualNeuralTS, self).__init__(*args, **kwargs)
+        super(ContextualImageNeuralTS, self).__init__(*args, **kwargs)
 
     def reset(self):
+
         self.histories = []
         self.model = ImageContextLinearModel(
             self.n_features, self.datamap_opts["shape"], self.n_hidden_dim,
-            every_step_decision=self.every_step_decision, pretrained_opts=self.pretrained_opts
+            every_step_decision=self.every_step_decision, pretrained_opts=self.pretrained_opts,
+            full_gradient=True
         )
         if self.teacher_opts["use"]:
             self.teacher_model = ImageContextLinearModel(
                 self.n_features, self.datamap_opts["shape"], self.n_hidden_dim,
-                every_step_decision=self.every_step_decision, pretrained_opts=self.pretrained_opts
+                every_step_decision=self.every_step_decision, pretrained_opts=self.pretrained_opts,
+                full_gradient=True                
             )
             if torch.cuda.is_available():
                 self.teacher_model = self.teacher_model.cuda()
