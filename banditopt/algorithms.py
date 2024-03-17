@@ -113,7 +113,7 @@ class MO_function_sample():
         for param in params_to_round:
             X[:, self.param_names.index(param)] = numpy.round(X[:, self.param_names.index(param)])
 
-        ys = numpy.array([self.algos[i].sample(X, seed=self.seeds[i], history=self.history) for i in range(len(self.algos))]).squeeze(axis=-1)
+        ys = numpy.array([self.algos[i].sample(X, seed=self.seeds[i], history=self.history, scale=0) for i in range(len(self.algos))]).squeeze(axis=-1)
         # ys = numpy.array([self.algos[i].predict(X)[0] for i in range(len(self.algos))]).squeeze(axis=-1)
         if self.time_limit is not None:
             pixeltimes = X[:, self.param_names.index("pdt")] * X[:, self.param_names.index("line_step")] * X[:, self.param_names.index("pixelsize")]**2/(20e-9)**2
@@ -541,7 +541,7 @@ class LinearBanditDiag:
             sigma = torch.sqrt(torch.sum(sigma2))
             if self.style == 'TS':
                 rng = numpy.random.default_rng(seed)
-                sample_r = rng.normal(loc=fx.item(), scale=sigma.item())
+                sample_r = rng.normal(loc=fx.item(), scale=sigma.item() * kwargs.get("scale", 1))
             elif self.style == 'UCB':
                 sample_r = fx.item() + sigma.item()
             else:
@@ -1361,7 +1361,7 @@ class ContextualLinearBanditDiag(LinearBanditDiag):
             sigma = torch.sqrt(torch.sum(sigma2))
             if self.style == 'TS':
                 rng = numpy.random.default_rng(seed)
-                sample_r = rng.normal(loc=fx.item(), scale=sigma.item())
+                sample_r = rng.normal(loc=fx.item(), scale=sigma.item() * kwargs.get("scale", 1))
             elif self.style == 'UCB':
                 sample_r = fx.item() + sigma.item()
             else:
@@ -1662,7 +1662,7 @@ class LSTMLinearBanditDiag(LinearBanditDiag):
             sigma = torch.sqrt(torch.sum(sigma2))
             if self.style == 'TS':
                 rng = numpy.random.default_rng(seed)
-                sample_r = rng.normal(loc=fx.item(), scale=sigma.item())
+                sample_r = rng.normal(loc=fx.item(), scale=sigma.item() * kwargs.get("scale", 1.))
             elif self.style == 'UCB':
                 sample_r = fx.item() + sigma.item()
             else:
