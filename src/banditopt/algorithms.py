@@ -2,8 +2,9 @@
 multi-objective bandits optimization problem.
 
 The functions from this file are adapted from
-[1] https://github.com/PDKlab/STED-Optimization/blob/master/src/algorithms.py
-[2] https://github.com/ZeroWeight/NeuralTS/blob/master/learner_diag_linear.py
+
+.. [1] https://github.com/PDKlab/STED-Optimization/blob/master/src/algorithms.py
+.. [2] https://github.com/ZeroWeight/NeuralTS/blob/master/learner_diag_linear.py
 """
 
 import numpy
