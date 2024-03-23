@@ -11,8 +11,10 @@ The algorithms provided within this repository are used the optimization of STED
 You can install `banditopt` via [pip](https://pypi.org/project/pip/).
 
 ```bash
-pip install banditopt
+pip install bandit-optimization
 ```
+
+*Note. When importing the module, bandit will raise a warning about not being able to load the microscope interface. This warning can be ignored.*
 
 ## License
 
