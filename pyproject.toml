@@ -5,12 +5,9 @@ build-backend = "setuptools.build_meta"
 [tool.setuptools.packages.find]
 where = ["src"]
 
-[tool.cibuildwheel]
-before-all = "uname -a"
-
 [project]
-name = "banditopt"
-version = "0.1.0"
+name = "bandit-optimization"
+version = "0.0.1"
 authors = [
   { name="Anthony Bilodeau", email="anthony.bilodeau.1@ulaval.ca" },
   { name="Albert Michaud-Gagnon", email="albert.michaud-gagnon@cervo.ulaval.ca" }
@@ -24,7 +21,7 @@ keywords = ["microscopy", "sted", "bandit", "optimization"]
 requires-python = ">=3.8"
 classifiers = [
     "Programming Language :: Python :: 3",
-    "License :: OSI Approved :: MIT License",
+    "License :: OSI Approved",
     "Operating System :: OS Independent",
 ]
 dependencies = [
