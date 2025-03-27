@@ -273,6 +273,36 @@ class Resolution(Objective):
         if res > self.res_cap:
             res = self.res_cap
         return res
+    
+class ResolutionZ(Objective):
+    def __init__(self, pixelsize, res_cap=700):
+        self.label = "Z-Resolution (nm)"
+        self.select_optimal = numpy.argmin
+        if isinstance(pixelsize, (tuple, list)):
+            pixelsize = pixelsize[0]
+        self.pixelsize = pixelsize
+        self.res_cap = res_cap
+
+    def evaluate(self, sted_stack, confocal_init, confocal_end, sted_fg, confocal_fg, *args, **kwargs):
+        # Stack is zyx
+        sted_volume = sted_stack[0]
+        profile = numpy.max(sted_volume, axis=(1, 2))
+        if numpy.all(profile == 0):
+            return self.res_cap
+        profile = (profile - profile.min()) / (profile.max() - profile.min())
+
+        # Center the profile on the maximum
+        xs = numpy.arange(len(profile)) - numpy.argmax(profile)
+
+        def gauss(x, A, mu, sigma):
+            return A * numpy.exp(-(x - mu)**2 / (2 * sigma**2))
+        
+        try:
+            popt, _ = optimize.curve_fit(gauss, xs, profile, p0=[1, 0, 1])
+        except RuntimeError:
+            return self.res_cap
+        
+        return popt[2] * self.pixelsize * 2 * numpy.sqrt(2 * numpy.log(2)) / 1e-9
 
 class FWHMResolution(Objective):
     def __init__(self, pixelsize):
