@@ -15,7 +15,7 @@ from scipy import optimize
 from skimage.transform import resize
 from skimage.feature import peak_local_max
 from skimage.metrics import structural_similarity
-from sklearn.metrics import mean_squared_error
+from sklearn.metrics import root_mean_squared_error
 
 import scipy.fft
 from scipy.optimize import curve_fit
@@ -462,10 +462,11 @@ class Squirrel(Objective):
         if self.normalize:
             reference = (reference - reference.min()) / (reference.max() - reference.min() + 1e-9)
             convolved = (convolved - convolved.min()) / (convolved.max() - convolved.min() + 1e-9)
-        error = mean_squared_error(reference[confocal_fg], convolved[confocal_fg], squared=True)
+        error = root_mean_squared_error(reference[confocal_fg], convolved[confocal_fg])
+    
 #         error = numpy.quantile(numpy.abs(reference[confocal_fg] - convolved[confocal_fg]), [0.95]).item()
 #         error = numpy.mean((reference[confocal_fg] - convolved[confocal_fg]))
-        return error
+        return error * error
 
     def out_squirrel(self, x, *args, **kwargs):
         """
